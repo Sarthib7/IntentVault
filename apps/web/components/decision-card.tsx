@@ -1,6 +1,7 @@
 import type { WorkflowResponse } from "@intentvault/schemas";
 
-function formatCurrency(value: number) {
+function formatCurrency(value: number | null) {
+  if (value === null || value === undefined) return "Unknown";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -8,7 +9,8 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null) {
+  if (value === null || value === undefined) return "Unknown";
   return `${value.toFixed(1)}%`;
 }
 
@@ -34,7 +36,7 @@ export function DecisionCard({
           <div className="metric">
             <span>Token</span>
             <strong>
-              {evidence.token.name} ({evidence.token.symbol})
+              {evidence.token.name ?? "Unknown"} ({evidence.token.symbol ?? "?"})
             </strong>
           </div>
         </div>
@@ -98,13 +100,21 @@ export function DecisionCard({
           <li>
             Mint authority active:{" "}
             <strong>
-              {evidence.authorities.mintAuthorityActive ? "Yes" : "No"}
+              {evidence.authorities.mintAuthorityActive === null
+                ? "Unknown"
+                : evidence.authorities.mintAuthorityActive
+                  ? "Yes"
+                  : "No"}
             </strong>
           </li>
           <li>
             Freeze authority active:{" "}
             <strong>
-              {evidence.authorities.freezeAuthorityActive ? "Yes" : "No"}
+              {evidence.authorities.freezeAuthorityActive === null
+                ? "Unknown"
+                : evidence.authorities.freezeAuthorityActive
+                  ? "Yes"
+                  : "No"}
             </strong>
           </li>
           <li>
@@ -138,4 +148,3 @@ export function DecisionCard({
     </>
   );
 }
-
