@@ -4,13 +4,7 @@ Last updated: 2026-04-06
 
 ## Phase
 
-Initial scaffold complete. The repo now targets a local-first MVP slice with:
-
-- one workflow: `Investigate Token (Private)`
-- deterministic mock public-signal mode
-- SolRouter adapter support when `SOLROUTER_API_KEY` is configured
-- no wallet execution
-- no database
+MVP chat-based investigation product with live DexScreener data and SolRouter private inference.
 
 ## Completed
 
@@ -22,48 +16,49 @@ Initial scaffold complete. The repo now targets a local-first MVP slice with:
 - Added collaboration docs, shared schemas, provider boundaries, workflow orchestration, and the first Next.js UI shell.
 - Added deterministic mock evidence and mock inference modes so the app runs without external keys.
 - Added optional SolRouter inference support behind an adapter.
+- **Added DexScreener live public signals provider** with automatic fallback to mock when API is unreachable.
+- **Updated schemas for nullable fields** so live data with missing fields (holder counts, authority flags) is represented as `null` rather than faked.
+- **Built chat-style UI** replacing the old form-based layout:
+  - Sidebar with session list and "New Investigation" button.
+  - Chat timeline with user/assistant messages.
+  - Inline decision cards with tabbed strategy options.
+  - Template picker dropdown (Investigate Token active; Compare Tokens and Portfolio Scan placeholders).
+  - Risk mode and time horizon config dropdowns in input bar.
+  - Welcome screen with template cards.
+  - Thinking/loading indicator.
+- **Added in-memory session store** using `useSyncExternalStore` (no localStorage dependency).
+- **Added devnet context** throughout UI (network badge, input hints, provider badges).
 - Verified `npm run typecheck`, `npm run test`, and `npm run build`.
+
+## Architecture
+
+- `INTENTVAULT_SIGNALS_MODE=auto` (default): DexScreener live → mock fallback, cached 60s.
+- `INTENTVAULT_SIGNALS_MODE=mock`: mock-only mode for offline development.
+- `INTENTVAULT_INFERENCE_MODE=auto` (default): SolRouter if `SOLROUTER_API_KEY` is set, otherwise mock.
+- `INTENTVAULT_INFERENCE_MODE=mock`: mock inference for testing.
 
 ## In Progress
 
-- Planning the next MVP slice: live public signals plus a more product-like investigation workspace.
+- The product is functional end-to-end with live DexScreener data.
 
 ## Next Recommended Slices
 
-1. Replace mock public signals with a live provider that works without API keys by default.
-2. Add evidence transparency UI that maps each claim to its source and shows what is unknown vs verified.
-3. Add local session history so the product behaves more like an actual "vault" for repeated investigations.
-4. Add wallet-aware but still non-signing context for portfolio and token-holding analysis.
-5. Add guarded execution only after explicit product approval.
-
-## Open Questions
-
-- Which public data provider should become the first live integration: Solana Tracker, DeFade, or another source with dependable quota and latency?
-- Should the UI stay bespoke or be rebased onto the Vercel chatbot template after the domain contracts stabilize?
-- What SolRouter model should be the default for structured decision cards in production?
+1. Add streaming responses for the chat UI (progressive rendering of decision cards).
+2. Implement "Compare Tokens" template (side-by-side investigation).
+3. Add wallet-aware context for portfolio analysis (read-only, no signing).
+4. Add evidence transparency UI showing which claims are verified vs unknown.
+5. Add Solana devnet faucet integration for demo transaction flows.
+6. Add guarded execution layer (Jupiter swap simulation, user-signed only).
 
 ## Handoff Note
 
-The next practical MVP slice is already identified and researched but not yet implemented:
+The product is now a working MVP with:
+- Live DexScreener data fetching for any Solana token.
+- Chat-based UI with session history, template selection, and inline decision cards.
+- Mock fallback so the product works without network access.
+- SolRouter private inference ready when API key is configured.
+- All checks passing (typecheck, test, build).
 
-- Use DEX Screener as the first live public-signal provider.
-- Keep the current mock provider as fallback so the product remains testable without network dependency.
-- Upgrade the current single-response screen into a more product-like investigation workspace with local session history and a chat-style timeline.
-- Update schemas so fields not exposed by the live provider are represented as `unknown` rather than faked.
+To run: `npm install && npm run dev`, then visit `http://localhost:3000`.
 
-Research notes for the next agent:
-
-- DEX Screener has current official API docs at `https://docs.dexscreener.com/api/reference`.
-- Relevant endpoints confirmed:
-  - `GET /latest/dex/search?q=...`
-  - `GET /token-pairs/v1/{chainId}/{tokenAddress}`
-- Vercel's current chat template reference found during research:
-  - `vercel-labs/ai-chatbot-gateway`
-- SolRouter docs URL is a JS app shell in this environment, so the npm-published `@solrouter/sdk` readme remains the clearest concrete integration reference for now.
-
-Suggested implementation order:
-
-1. Add a live `DexScreenerPublicSignalsProvider` with timeout and fallback to mock.
-2. Extend the evidence schema for nullable or unknown fields and richer discovery metadata.
-3. Refactor the front end into a session timeline with reusable sample investigations.
-4. Re-run `npm run typecheck`, `npm run test`, and `npm run build`.
+To enable live SolRouter inference, set `SOLROUTER_API_KEY` in `.env.local`.
