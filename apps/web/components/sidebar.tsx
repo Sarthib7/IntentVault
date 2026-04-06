@@ -7,25 +7,39 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
-  if (diffMs < 60_000) return "just now";
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
-  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
+  if (diffMs < 60_000) return "now";
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+}
+
+export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1>IntentVault</h1>
-        <span className="network-badge">Devnet</span>
+        <div className="sidebar-brand">
+          <h1>INTENTVAULT</h1>
+          <span className="brand-cursor" />
+        </div>
+        <button
+          className="theme-toggle"
+          onClick={onToggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
       </div>
 
       <button className="new-chat-btn" onClick={() => createSession()}>
-        + New Investigation
+        + new_investigation
       </button>
 
       <div className="session-list">
@@ -35,6 +49,7 @@ export function Sidebar() {
             className={`session-item ${session.id === activeId ? "active" : ""}`}
             onClick={() => setActiveSession(session.id)}
           >
+            <span className="session-item-icon">&gt;</span>
             <span className="session-item-title">{session.title}</span>
             <span className="session-item-time">
               {formatTime(session.updatedAt)}
@@ -43,18 +58,57 @@ export function Sidebar() {
         ))}
       </div>
 
+      <div className="sidebar-roadmap">
+        <h3>// roadmap</h3>
+        <div className="roadmap-item">
+          <span className="roadmap-badge live">live</span>
+          <span>Investigate Token</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge live">live</span>
+          <span>DexScreener Data</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge live">live</span>
+          <span>SolRouter Inference</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge soon">soon</span>
+          <span>Deep Research Mode</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge soon">soon</span>
+          <span>Research Artifacts</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge beta">beta</span>
+          <span>Compare Tokens</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge beta">beta</span>
+          <span>Portfolio Risk Scan</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge beta">beta</span>
+          <span>Wallet Connection</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge planned">future</span>
+          <span>Jupiter Swap Sim</span>
+        </div>
+        <div className="roadmap-item">
+          <span className="roadmap-badge planned">future</span>
+          <span>x402 Paid Tools</span>
+        </div>
+      </div>
+
       <div className="sidebar-footer">
-        <span>Private Solana decision workflows</span>
-        <span>No server-side history &middot; No wallet signing</span>
         <span>
           Powered by{" "}
-          <a
-            href="https://www.solrouter.com"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
             SolRouter
           </a>
+          {" "}· Solana Devnet
         </span>
       </div>
     </aside>
