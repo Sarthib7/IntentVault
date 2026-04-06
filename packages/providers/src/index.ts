@@ -9,6 +9,10 @@ import {
 } from "@intentvault/schemas";
 import { summarizeIntent } from "@intentvault/security";
 
+/* ------------------------------------------------------------------ */
+/* Provider interfaces                                                 */
+/* ------------------------------------------------------------------ */
+
 export interface PublicSignalsProvider {
   readonly name: string;
   fetchSignals(input: InvestigationRequest): Promise<NormalizedEvidence>;
@@ -23,15 +27,9 @@ export interface InferenceProvider {
   }): Promise<DecisionCard>;
 }
 
-const solRouterModels = [
-  "gpt-oss-20b",
-  "gemini-flash",
-  "claude-sonnet",
-  "claude-sonnet-4",
-  "gpt-4o-mini"
-] as const;
-
-type SolRouterModel = (typeof solRouterModels)[number];
+/* ------------------------------------------------------------------ */
+/* Caching wrapper                                                     */
+/* ------------------------------------------------------------------ */
 
 export class CachedPublicSignalsProvider implements PublicSignalsProvider {
   readonly name: string;
@@ -74,6 +72,348 @@ export class CachedPublicSignalsProvider implements PublicSignalsProvider {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* DexScreener live provider                                           */
+/* ------------------------------------------------------------------ */
+
+interface DexScreenerPair {
+  chainId: string;
+  dexId: string;
+  url: string;
+  pairAddress: string;
+  baseToken: {
+    address: string;
+    name: string;
+    symbol: string;
+  };
+  quoteToken: {
+    address: string;
+    name: string;
+    symbol: string;
+  };
+  priceUsd?: string;
+  txns?: {
+    m5?: { buys: number; sells: number };
+    h1?: { buys: number; sells: number };
+    h24?: { buys: number; sells: number };
+  };
+  volume?: {
+    m5?: number;
+    h1?: number;
+    h6?: number;
+    h24?: number;
+  };
+  priceChange?: {
+    m5?: number;
+    h1?: number;
+    h6?: number;
+    h24?: number;
+  };
+  liquidity?: {
+    usd?: number;
+    base?: number;
+    quote?: number;
+  };
+  fdv?: number;
+  marketCap?: number;
+  pairCreatedAt?: number;
+}
+
+export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
+  readonly name = "dexscreener-live";
+  private readonly baseUrl = "https://api.dexscreener.com";
+  private readonly timeoutMs: number;
+
+  constructor({ timeoutMs = 8000 }: { timeoutMs?: number } = {}) {
+    this.timeoutMs = timeoutMs;
+  }
+
+  async fetchSignals(input: InvestigationRequest): Promise<NormalizedEvidence> {
+    const query = input.tokenQuery.trim();
+    const start = Date.now();
+
+    // Determine if the query looks like a Solana address (base58, 32-44 chars)
+    const isAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query);
+
+    let pair: DexScreenerPair | null = null;
+
+    if (isAddress) {
+      // Try direct token lookup first
+      pair = await this.fetchByTokenAddress(query);
+    }
+
+    if (!pair) {
+      // Fall back to search
+      pair = await this.searchToken(query);
+    }
+
+    const latencyMs = Date.now() - start;
+
+    if (!pair) {
+      throw new Error(
+        `DexScreener: no Solana pairs found for "${query}". Try a valid token mint address or symbol.`
+      );
+    }
+
+    // Build risk factors from available data
+    const factors = this.buildRiskFactors(pair);
+    const score = this.computeRiskScore(pair, factors);
+    const level = riskLevelFromScore(score);
+
+    return normalizedEvidenceSchema.parse({
+      token: {
+        query,
+        mint: pair.baseToken.address,
+        symbol: pair.baseToken.symbol ?? null,
+        name: pair.baseToken.name ?? null
+      },
+      market: {
+        priceUsd: pair.priceUsd ? parseFloat(pair.priceUsd) : null,
+        liquidityUsd: pair.liquidity?.usd ?? null,
+        marketCapUsd: pair.marketCap ?? null,
+        fdvUsd: pair.fdv ?? null,
+        volume5mUsd: pair.volume?.m5 ?? null,
+        volume1hUsd: pair.volume?.h1 ?? null,
+        volume24hUsd: pair.volume?.h24 ?? null,
+        priceChange24hPct: pair.priceChange?.h24 ?? null
+      },
+      holders: {
+        holderCount: null,
+        top10SharePct: null,
+        top20SharePct: null
+      },
+      authorities: {
+        mintAuthorityActive: null,
+        freezeAuthorityActive: null,
+        lpLockedPct: null
+      },
+      risk: {
+        score,
+        level,
+        factors
+      },
+      discovery: {
+        pairAddress: pair.pairAddress,
+        dexId: pair.dexId,
+        pairUrl: pair.url ?? null,
+        createdAt: pair.pairCreatedAt
+          ? new Date(pair.pairCreatedAt).toISOString()
+          : null
+      },
+      sources: [
+        {
+          provider: this.name,
+          latencyMs,
+          cached: false
+        }
+      ]
+    });
+  }
+
+  private async fetchByTokenAddress(
+    address: string
+  ): Promise<DexScreenerPair | null> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      const response = await fetch(
+        `${this.baseUrl}/tokens/v1/solana/${address}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timer);
+
+      if (!response.ok) return null;
+
+      const pairs: DexScreenerPair[] = await response.json();
+      return this.pickBestPair(pairs);
+    } catch {
+      return null;
+    }
+  }
+
+  private async searchToken(query: string): Promise<DexScreenerPair | null> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      const response = await fetch(
+        `${this.baseUrl}/latest/dex/search?q=${encodeURIComponent(query)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timer);
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      const pairs: DexScreenerPair[] = data.pairs ?? [];
+
+      // Filter to Solana pairs only
+      const solanaPairs = pairs.filter(
+        (p) => p.chainId === "solana"
+      );
+
+      return this.pickBestPair(solanaPairs);
+    } catch {
+      return null;
+    }
+  }
+
+  private pickBestPair(pairs: DexScreenerPair[]): DexScreenerPair | null {
+    if (!pairs || pairs.length === 0) return null;
+
+    // Pick the pair with highest 24h volume (most active)
+    return pairs.reduce((best, current) => {
+      const bestVol = best.volume?.h24 ?? 0;
+      const currentVol = current.volume?.h24 ?? 0;
+      return currentVol > bestVol ? current : best;
+    }, pairs[0]);
+  }
+
+  private buildRiskFactors(pair: DexScreenerPair) {
+    const factors = [];
+
+    // Liquidity risk
+    const liqUsd = pair.liquidity?.usd ?? 0;
+    factors.push(
+      publicRiskFactorSchema.parse({
+        label: "Liquidity depth",
+        evidence:
+          liqUsd > 0
+            ? `Liquidity is $${formatCompact(liqUsd)} USD.`
+            : "Liquidity data unavailable from this source.",
+        severity: liqUsd < 10_000 ? "high" : liqUsd < 100_000 ? "medium" : "low"
+      })
+    );
+
+    // Volume risk
+    const vol24h = pair.volume?.h24 ?? 0;
+    factors.push(
+      publicRiskFactorSchema.parse({
+        label: "24h trading volume",
+        evidence:
+          vol24h > 0
+            ? `24h volume is $${formatCompact(vol24h)} USD.`
+            : "Volume data unavailable.",
+        severity: vol24h < 5_000 ? "high" : vol24h < 50_000 ? "medium" : "low"
+      })
+    );
+
+    // Price volatility
+    const change24h = pair.priceChange?.h24;
+    if (change24h !== undefined && change24h !== null) {
+      const absChange = Math.abs(change24h);
+      factors.push(
+        publicRiskFactorSchema.parse({
+          label: "24h price change",
+          evidence: `Price changed ${change24h > 0 ? "+" : ""}${change24h.toFixed(1)}% in 24 hours.`,
+          severity: absChange > 50 ? "high" : absChange > 20 ? "medium" : "low"
+        })
+      );
+    }
+
+    // Pair age risk
+    if (pair.pairCreatedAt) {
+      const ageMs = Date.now() - pair.pairCreatedAt;
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      factors.push(
+        publicRiskFactorSchema.parse({
+          label: "Pair age",
+          evidence: `Pair created ${ageDays < 1 ? "less than a day" : `${Math.floor(ageDays)} days`} ago.`,
+          severity: ageDays < 3 ? "high" : ageDays < 30 ? "medium" : "low"
+        })
+      );
+    }
+
+    // FDV / market cap ratio
+    if (pair.fdv && pair.marketCap && pair.marketCap > 0) {
+      const ratio = pair.fdv / pair.marketCap;
+      if (ratio > 5) {
+        factors.push(
+          publicRiskFactorSchema.parse({
+            label: "FDV to market cap ratio",
+            evidence: `FDV ($${formatCompact(pair.fdv)}) is ${ratio.toFixed(1)}x market cap ($${formatCompact(pair.marketCap)}), suggesting large unlocked supply.`,
+            severity: ratio > 20 ? "high" : "medium"
+          })
+        );
+      }
+    }
+
+    // Ensure at least one factor
+    if (factors.length === 0) {
+      factors.push(
+        publicRiskFactorSchema.parse({
+          label: "Limited data",
+          evidence: "Insufficient data from DexScreener to assess risk factors.",
+          severity: "high"
+        })
+      );
+    }
+
+    return factors;
+  }
+
+  private computeRiskScore(
+    pair: DexScreenerPair,
+    factors: { severity: string }[]
+  ): number {
+    let score = 50; // Start neutral
+
+    const liqUsd = pair.liquidity?.usd ?? 0;
+    if (liqUsd < 10_000) score += 20;
+    else if (liqUsd < 50_000) score += 10;
+    else if (liqUsd > 500_000) score -= 15;
+
+    const vol24h = pair.volume?.h24 ?? 0;
+    if (vol24h < 5_000) score += 15;
+    else if (vol24h > 100_000) score -= 10;
+
+    const change24h = pair.priceChange?.h24;
+    if (change24h !== undefined && change24h !== null) {
+      if (Math.abs(change24h) > 50) score += 10;
+    }
+
+    if (pair.pairCreatedAt) {
+      const ageDays = (Date.now() - pair.pairCreatedAt) / (1000 * 60 * 60 * 24);
+      if (ageDays < 3) score += 15;
+      else if (ageDays < 7) score += 8;
+    }
+
+    // High severity factor count
+    const highCount = factors.filter((f) => f.severity === "high").length;
+    score += highCount * 5;
+
+    return clamp(score, 10, 96);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Fallback provider: tries live, falls back to mock                   */
+/* ------------------------------------------------------------------ */
+
+export class FallbackPublicSignalsProvider implements PublicSignalsProvider {
+  readonly name: string;
+
+  constructor(
+    private readonly primary: PublicSignalsProvider,
+    private readonly fallback: PublicSignalsProvider
+  ) {
+    this.name = `${primary.name}|${fallback.name}`;
+  }
+
+  async fetchSignals(input: InvestigationRequest): Promise<NormalizedEvidence> {
+    try {
+      return await this.primary.fetchSignals(input);
+    } catch {
+      return await this.fallback.fetchSignals(input);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Mock provider (updated for nullable schema)                         */
+/* ------------------------------------------------------------------ */
+
 export class MockPublicSignalsProvider implements PublicSignalsProvider {
   readonly name = "mock-public-signals";
 
@@ -90,7 +430,7 @@ export class MockPublicSignalsProvider implements PublicSignalsProvider {
     const freezeAuthorityActive = (seed & 2) === 2;
     const symbol = input.tokenQuery.trim().slice(0, 6).toUpperCase();
     const level = riskLevelFromScore(score);
-    const factors = buildRiskFactors({
+    const factors = buildMockRiskFactors({
       score,
       top10SharePct,
       lpLockedPct,
@@ -109,9 +449,11 @@ export class MockPublicSignalsProvider implements PublicSignalsProvider {
         priceUsd: roundTo(0.0008 + (seed % 2000) / 1000, 4),
         liquidityUsd,
         marketCapUsd,
+        fdvUsd: marketCapUsd * 1.5,
         volume5mUsd: roundTo(liquidityUsd * 0.011, 2),
         volume1hUsd: roundTo(liquidityUsd * 0.09, 2),
-        volume24hUsd: roundTo(liquidityUsd * 0.54, 2)
+        volume24hUsd: roundTo(liquidityUsd * 0.54, 2),
+        priceChange24hPct: roundTo(-12 + (seed % 60), 1)
       },
       holders: {
         holderCount,
@@ -139,6 +481,10 @@ export class MockPublicSignalsProvider implements PublicSignalsProvider {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Mock inference provider                                             */
+/* ------------------------------------------------------------------ */
+
 export class MockInferenceProvider implements InferenceProvider {
   readonly name = "mock-private-inference";
 
@@ -154,7 +500,7 @@ export class MockInferenceProvider implements InferenceProvider {
     const overallRisk = evidence.risk.level;
     const score = evidence.risk.score;
     const topRisks = evidence.risk.factors.slice(0, 3);
-    const intent = summarizeIntent(input);
+    const _intent = summarizeIntent(input);
 
     return decisionCardSchema.parse({
       overallRisk,
@@ -206,6 +552,20 @@ export class MockInferenceProvider implements InferenceProvider {
     });
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* SolRouter inference provider                                        */
+/* ------------------------------------------------------------------ */
+
+const solRouterModels = [
+  "gpt-oss-20b",
+  "gemini-flash",
+  "claude-sonnet",
+  "claude-sonnet-4",
+  "gpt-4o-mini"
+] as const;
+
+type SolRouterModel = (typeof solRouterModels)[number];
 
 export class SolRouterInferenceProvider implements InferenceProvider {
   readonly name = "solrouter-private-inference";
@@ -311,17 +671,26 @@ export class SolRouterInferenceProvider implements InferenceProvider {
   }
 }
 
-export function createSignalsProvider() {
-  const mode = process.env.INTENTVAULT_SIGNALS_MODE ?? "mock";
+/* ------------------------------------------------------------------ */
+/* Factory functions                                                   */
+/* ------------------------------------------------------------------ */
 
-  switch (mode) {
-    case "mock":
-    default:
-      return new CachedPublicSignalsProvider(new MockPublicSignalsProvider());
+export function createSignalsProvider(): PublicSignalsProvider {
+  const mode = process.env.INTENTVAULT_SIGNALS_MODE ?? "auto";
+
+  if (mode === "mock") {
+    return new CachedPublicSignalsProvider(new MockPublicSignalsProvider());
   }
+
+  // Default "auto": try DexScreener live, fall back to mock
+  const live = new DexScreenerPublicSignalsProvider();
+  const mock = new MockPublicSignalsProvider();
+  return new CachedPublicSignalsProvider(
+    new FallbackPublicSignalsProvider(live, mock)
+  );
 }
 
-export function createInferenceProvider() {
+export function createInferenceProvider(): InferenceProvider {
   const mode = process.env.INTENTVAULT_INFERENCE_MODE ?? "auto";
 
   if (mode === "mock") {
@@ -341,7 +710,11 @@ export function createInferenceProvider() {
   });
 }
 
-function buildRiskFactors({
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+function buildMockRiskFactors({
   score,
   top10SharePct,
   lpLockedPct,
@@ -388,24 +761,16 @@ function buildRiskFactors({
 }
 
 function riskLevelFromScore(score: number) {
-  if (score >= 70) {
-    return "high";
-  }
-
-  if (score >= 40) {
-    return "medium";
-  }
-
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
   return "low";
 }
 
 function hashString(value: string) {
   let hash = 0;
-
   for (const character of value) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-
   return hash;
 }
 
@@ -418,14 +783,18 @@ function roundTo(value: number, decimals: number) {
   return Math.round(value * factor) / factor;
 }
 
+function formatCompact(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toFixed(0);
+}
+
 function extractJsonObject(value: string) {
   const start = value.indexOf("{");
   const end = value.lastIndexOf("}");
-
   if (start === -1 || end === -1 || end < start) {
     throw new Error("SolRouter response did not contain a JSON object");
   }
-
   return value.slice(start, end + 1);
 }
 
@@ -433,6 +802,5 @@ function resolveSolRouterModel(value: string | undefined): SolRouterModel {
   if (value && solRouterModels.includes(value as SolRouterModel)) {
     return value as SolRouterModel;
   }
-
   return "gpt-oss-20b";
 }
