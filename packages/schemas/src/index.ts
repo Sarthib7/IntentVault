@@ -26,36 +26,48 @@ export const publicRiskFactorSchema = z.object({
   severity: riskLevelSchema
 });
 
+/**
+ * Normalized evidence with nullable fields.
+ * Fields set to null mean "unknown / not available from provider."
+ */
 export const normalizedEvidenceSchema = z.object({
   token: z.object({
     query: z.string(),
     mint: z.string(),
-    symbol: z.string(),
-    name: z.string()
+    symbol: z.string().nullable(),
+    name: z.string().nullable()
   }),
   market: z.object({
-    priceUsd: z.number().nonnegative(),
-    liquidityUsd: z.number().nonnegative(),
-    marketCapUsd: z.number().nonnegative(),
-    volume5mUsd: z.number().nonnegative(),
-    volume1hUsd: z.number().nonnegative(),
-    volume24hUsd: z.number().nonnegative()
+    priceUsd: z.number().nonnegative().nullable(),
+    liquidityUsd: z.number().nonnegative().nullable(),
+    marketCapUsd: z.number().nonnegative().nullable(),
+    fdvUsd: z.number().nonnegative().nullable(),
+    volume5mUsd: z.number().nonnegative().nullable(),
+    volume1hUsd: z.number().nonnegative().nullable(),
+    volume24hUsd: z.number().nonnegative().nullable(),
+    priceChange24hPct: z.number().nullable()
   }),
   holders: z.object({
-    holderCount: z.number().int().nonnegative(),
-    top10SharePct: z.number().min(0).max(100),
-    top20SharePct: z.number().min(0).max(100)
+    holderCount: z.number().int().nonnegative().nullable(),
+    top10SharePct: z.number().min(0).max(100).nullable(),
+    top20SharePct: z.number().min(0).max(100).nullable()
   }),
   authorities: z.object({
-    mintAuthorityActive: z.boolean(),
-    freezeAuthorityActive: z.boolean(),
-    lpLockedPct: z.number().min(0).max(100)
+    mintAuthorityActive: z.boolean().nullable(),
+    freezeAuthorityActive: z.boolean().nullable(),
+    lpLockedPct: z.number().min(0).max(100).nullable()
   }),
   risk: z.object({
     score: z.number().int().min(0).max(100),
     level: riskLevelSchema,
     factors: z.array(publicRiskFactorSchema).min(1)
   }),
+  discovery: z.object({
+    pairAddress: z.string().nullable(),
+    dexId: z.string().nullable(),
+    pairUrl: z.string().nullable(),
+    createdAt: z.string().nullable()
+  }).optional(),
   sources: z.array(sourceTraceSchema).min(1)
 });
 
@@ -104,3 +116,29 @@ export const workflowResponseSchema = z.object({
 
 export type WorkflowResponse = z.infer<typeof workflowResponseSchema>;
 
+/* ------------------------------------------------------------------ */
+/* Chat message types for the session timeline UI                      */
+/* ------------------------------------------------------------------ */
+
+export const chatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string(),
+  timestamp: z.string(),
+  /** Attached workflow response for assistant messages that include a decision card */
+  workflowResponse: workflowResponseSchema.optional(),
+  /** Template used for this message */
+  templateId: z.string().optional()
+});
+
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+export const sessionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  messages: z.array(chatMessageSchema)
+});
+
+export type Session = z.infer<typeof sessionSchema>;
