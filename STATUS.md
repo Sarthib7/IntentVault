@@ -2,121 +2,202 @@
 
 Last updated: 2026-04-06
 
-## Current Focus (Active Work)
+## Current State
 
-**Priority 1: SolRouter Integration (Core Product)**
-The main product value is private inference via SolRouter. The current build has mock inference as default and SolRouter ready behind an adapter. The IMMEDIATE next step is to make SolRouter the primary inference engine so investigations actually go through private encrypted inference rather than returning instant mock responses.
+The product is a working MVP with live DexScreener data, mock inference (SolRouter adapter ready), and a chat-style UI that's mid-redesign into a retro terminal aesthetic. The UI components have been rebuilt but the chat-view.tsx still needs updating to consume the new SSE streaming API and use the new CSS classes.
 
-- SolRouter SDK is installed (`@solrouter/sdk`)
-- Adapter exists in `packages/providers/src/index.ts` → `SolRouterInferenceProvider`
-- Needs `SOLROUTER_API_KEY` env var to activate
-- Default model: `gpt-oss-20b` (configurable via `SOLROUTER_MODEL`)
-- Integration point: `createInferenceProvider()` factory function
+## What's Done
 
-**Priority 2: Deep Research Mode**
-Build a "deep research" mode where SolRouter does actual multi-step research:
-- Collect public signals (DexScreener live data) ✅ Done
-- Run private inference through SolRouter with structured prompts ← Next
-- Generate research artifacts (detailed analysis, risk breakdowns)
-- Show step-by-step progress as investigation runs (streaming SSE) ← In progress
+### Backend / Data Layer (Fully Working)
+- **DexScreener live provider** — Fetches real-time Solana token data via `api.dexscreener.com`. Supports address lookup + keyword search. Picks highest-volume Solana pair. Computes risk scores from liquidity, volume, volatility, pair age.
+- **Mock fallback** — If DexScreener API is unreachable, mock provider generates deterministic fake data.
+- **SolRouter adapter** — `SolRouterInferenceProvider` in `packages/providers/src/index.ts` is fully implemented. Uses `@solrouter/sdk` with encrypted inference. Needs `SOLROUTER_API_KEY` env var to activate.
+- **SSE streaming API** — `apps/web/app/api/workflow/investigate-token/route.ts` now returns Server-Sent Events with step-by-step progress (initialize → fetch signals → normalize → private inference → assemble).
+- **Nullable schemas** — All evidence fields support `null` for "unknown" so live API data with missing fields doesn't crash.
 
-**Priority 3: UI Overhaul (In Progress)**
-Redesigning from basic form to retro terminal-aesthetic chat interface:
-- Dark/light theme toggle
-- Monospace-driven clean minimal design
-- Step-by-step workflow visualization (not instant answers)
-- Roadmap features with Soon/Closed Beta labels
-- Better provider transparency (mock vs live indicators)
+### Frontend (Partially Updated — Needs Finishing)
+- **Sidebar** ✅ — Updated with roadmap section (live/soon/beta/planned badges), theme toggle, blinking cursor brand.
+- **Decision card** ✅ — Redesigned with terminal aesthetic, monospace fonts, compact layout.
+- **CSS** ✅ — Full retro terminal theme with dark/light mode support via `data-theme` attribute.
+- **Chat view** ⚠️ **NEEDS UPDATE** — `apps/web/components/chat-view.tsx` still uses the OLD fetch (non-streaming JSON). Needs to be updated to:
+  1. Consume the SSE stream from the API
+  2. Show workflow steps progressively
+  3. Use new CSS class names (msg-*, wf-step, etc.)
+  4. Pass theme prop and wire up theme toggle
+- **Page** ⚠️ **NEEDS UPDATE** — `apps/web/app/page.tsx` needs to manage theme state and pass to Sidebar.
+- **Layout** ⚠️ — `apps/web/app/layout.tsx` may need `data-theme` attribute on `<html>`.
 
-## Completed
+### What's NOT Working Yet
+- Chat view doesn't show step-by-step progress (still instant response)
+- Theme toggle is wired in sidebar but not connected to state
+- The old `investigation-workspace.tsx` component is unused (can be deleted)
 
-- PRD review and MVP boundary extraction
-- npm workspace architecture with modular packages
-- Mock public signals and mock inference providers
-- SolRouter adapter (ready, needs API key to activate)
-- DexScreener live public signals provider with fallback to mock
-- Schemas updated for nullable fields (live API compatibility)
-- Chat-style UI with session timeline, sidebar, inline decision cards
-- In-memory session store (no localStorage, no server persistence)
-- Streaming SSE API endpoint for step-by-step investigation progress
-- Test, typecheck, and build all passing
+## Priority Order for Next Agent
 
-## Architecture
+### 1. FINISH THE UI (Immediate — ~30 min)
 
-```
-apps/web/                    → Next.js App Router UI
-  app/api/workflow/          → SSE streaming investigation endpoint
-  components/                → Chat UI, decision cards, sidebar
-  lib/                       → Session store, hooks
+The CSS and components are built. The chat-view.tsx needs to be rewritten to:
 
-packages/schemas/            → Zod schemas, TypeScript contracts
-packages/providers/          → DexScreener live, SolRouter adapter, mock providers
-packages/workflows/          → Deterministic workflow orchestration
-packages/security/           → Prompt shaping, intent summarization, redaction
+**a) Consume SSE stream instead of JSON fetch:**
+```typescript
+// Instead of: const res = await fetch(url); const data = await res.json();
+// Use:
+const res = await fetch(url, { method: "POST", ... });
+const reader = res.body!.getReader();
+const decoder = new TextDecoder();
+// Parse SSE events and update step state progressively
 ```
 
-### Provider Modes
+**b) Show workflow steps** as they come in (using the `wf-step` CSS classes):
+```
+[●] Initializing investigation           iv-abc123...
+[●] Fetching public signals              DexScreener · "BONK"
+[✓] Fetching public signals              Found Bonk · 234ms
+[●] Normalizing evidence bundle          3 risk factors · Score 42/100
+[●] Running private inference            SolRouter encrypted · gpt-oss-20b
+[✓] Running private inference            Overall risk: medium
+[✓] Assembling decision card
+```
 
-| Env Var | Value | Behavior |
-|---------|-------|----------|
-| `INTENTVAULT_SIGNALS_MODE` | `auto` (default) | DexScreener live → mock fallback |
-| `INTENTVAULT_SIGNALS_MODE` | `mock` | Mock only (offline dev) |
-| `INTENTVAULT_INFERENCE_MODE` | `auto` (default) | SolRouter if API key set, else mock |
-| `INTENTVAULT_INFERENCE_MODE` | `mock` | Mock inference only |
-| `SOLROUTER_API_KEY` | (your key) | Enables live SolRouter private inference |
-| `SOLROUTER_MODEL` | `gpt-oss-20b` etc | SolRouter model selection |
+**c) Wire up theme toggle:**
+- Page manages `theme` state
+- Passes to Sidebar and applies `data-theme` on `<html>`
 
-## In Progress
+**d) Use new CSS classes:**
+- Messages: `msg-indicator`, `msg-body`, `msg-meta`, `msg-sender`, `msg-time`, `msg-text`
+- Steps: `wf-step`, `wf-step-icon`, `wf-step-label`, `wf-step-detail`
+- Input: `input-config`, `cfg-select`, `cfg-divider`, `input-row`, `input-field`, `send-btn`
 
-- UI overhaul: retro terminal aesthetic with dark/light themes
-- Streaming workflow steps (SSE endpoint done, UI consuming it in progress)
-- SolRouter as primary inference (adapter ready, needs API key for testing)
+### 2. INTEGRATE SOLROUTER (Core Product Value)
 
-## Next Steps for Next Agent
+This is the main product differentiator. Currently mock inference returns instant canned responses.
 
-1. **Test with real SolRouter API key** — Set `SOLROUTER_API_KEY` in `.env.local` and verify the full flow works end-to-end with encrypted private inference.
-2. **Deep Research Mode** — Extend the SolRouter prompt to do multi-step analysis:
-   - Phase 1: Quick scan (risk score, basic market data)
-   - Phase 2: Deep analysis (holder patterns, authority audit, LP analysis)
-   - Phase 3: Strategy generation (personalized based on user intent)
-   - Each phase streams back to the UI as a separate step
-3. **Research Artifacts** — Save investigation results as structured artifacts that users can reference later.
-4. **Compare Tokens template** — Side-by-side investigation of two tokens.
-5. **Portfolio Scan template** — Wallet-aware risk analysis (read-only).
-6. **Wallet adapter** — Solana Wallet Adapter for portfolio context (no signing).
+**To activate:**
+- Set `SOLROUTER_API_KEY=your-key` in `.env.local`
+- The factory function in `packages/providers/src/index.ts` → `createInferenceProvider()` will automatically use SolRouterInferenceProvider
 
-## Roadmap Features (for UI display)
+**To test:**
+- Run `npm run dev`
+- Enter a token — should show "SolRouter encrypted inference" in the step detail
+- Response will be slower (real AI inference) which is actually GOOD because the step-by-step visualization fills the time
 
-| Feature | Status | Label |
+**Model options** (set via `SOLROUTER_MODEL` env var):
+- `gpt-oss-20b` (default)
+- `gemini-flash`
+- `claude-sonnet`
+- `claude-sonnet-4`
+- `gpt-4o-mini`
+
+### 3. DEEP RESEARCH MODE
+
+Once SolRouter is working, extend the investigation to multi-phase:
+- Phase 1: Quick scan (market data + basic risk score)
+- Phase 2: Deep analysis (SolRouter analyzes holder patterns, authority audit, LP analysis with more context)
+- Phase 3: Strategy generation (personalized based on user's risk mode, time horizon, and private notes)
+- Each phase is a separate SSE step so the user sees progress
+
+### 4. UI RESEARCH DIRECTION
+
+Research how existing AI product UIs handle similar patterns:
+- **ChatGPT** — Progressive text streaming, thinking indicators, artifact panels
+- **Perplexity** — Step-by-step source gathering before answer, citation cards
+- **Claude** — Thinking block, artifact sidebar, clean minimal design
+- **DeepSeek** — Deep think mode with reasoning chain visible
+- **Vercel v0** — Code generation with preview, iteration
+- **Cursor** — Agentic code changes shown step by step
+
+Key takeaways to apply:
+- Show the PROCESS not just the result (like Perplexity's source gathering)
+- Use progressive disclosure (collapsed sections, expandable detail)
+- Make wait time feel productive (stream partial results)
+- Clear separation between "facts gathered" and "AI reasoning"
+- Terminal aesthetic differentiates from generic chat UIs
+
+### 5. REMAINING FEATURES
+
+| Feature | Status | Notes |
 |---------|--------|-------|
-| Investigate Token | Active | LIVE |
-| DexScreener Live Data | Active | LIVE |
-| SolRouter Private Inference | Ready (needs API key) | LIVE |
-| Step-by-Step Progress | In progress | SOON |
-| Deep Research Mode | Planned | SOON |
-| Compare Tokens | Planned | CLOSED BETA |
-| Portfolio Risk Scan | Planned | CLOSED BETA |
-| Wallet Connection | Planned | CLOSED BETA |
-| Jupiter Swap Simulation | Planned | FUTURE |
-| x402 Pay-per-call Tools | Planned | FUTURE |
+| Compare Tokens | Template placeholder exists | Need side-by-side layout |
+| Portfolio Scan | Template placeholder exists | Need wallet adapter (read-only) |
+| Wallet Connection | Not started | `@solana/wallet-adapter-react` |
+| Jupiter Swap Sim | Not started | Quote-only, no signing |
+| x402 Payments | Not started | Pay-per-call tool access |
+| Research Artifacts | Not started | Save investigations for reference |
+
+## Architecture Reference
+
+```
+apps/web/
+  app/
+    api/workflow/investigate-token/route.ts  → SSE streaming endpoint
+    globals.css                              → Retro terminal theme (dark/light)
+    layout.tsx                               → Root layout
+    page.tsx                                 → App entry (Sidebar + ChatView)
+  components/
+    chat-view.tsx          ⚠️ NEEDS SSE UPDATE
+    chat-decision-card.tsx ✅ Terminal aesthetic
+    sidebar.tsx            ✅ With roadmap + theme toggle
+    decision-card.tsx      (legacy, can delete)
+    investigation-workspace.tsx (legacy, can delete)
+  lib/
+    session-store.ts       ✅ In-memory sessions
+    use-session-store.ts   ✅ React hooks
+
+packages/
+  schemas/src/index.ts     ✅ Nullable fields + chat types
+  providers/src/index.ts   ✅ DexScreener + SolRouter + mock
+  workflows/src/            ✅ Investigation workflow
+  security/src/             ✅ Intent summarization, redaction
+```
+
+### Environment Variables
+
+| Var | Default | Description |
+|-----|---------|-------------|
+| `INTENTVAULT_SIGNALS_MODE` | `auto` | `auto` = DexScreener→mock, `mock` = mock only |
+| `INTENTVAULT_INFERENCE_MODE` | `auto` | `auto` = SolRouter if key set else mock |
+| `SOLROUTER_API_KEY` | — | Enables live SolRouter private inference |
+| `SOLROUTER_MODEL` | `gpt-oss-20b` | SolRouter model to use |
+| `SOLROUTER_BASE_URL` | — | Optional custom SolRouter endpoint |
+
+## Git Log (Session 2)
+
+```
+e77e3fc chore: update lockfile and next env types
+ef7a1ef feat: redesign decision card with terminal aesthetic
+14df8b8 feat: add roadmap section and theme toggle to sidebar
+33a6d94 feat: redesign UI with retro terminal aesthetic and dark/light themes
+321ba13 feat: add SSE streaming for step-by-step investigation progress
+a5fd5a1 docs: update status with SolRouter priority, deep research plans, and user feedback
+99a7381 chore: fix gitignore pattern for tsbuildinfo files
+04ecdc9 docs: update status with chat UI, live DexScreener, and devnet context
+8cbbd13 feat: redesign page layout as sidebar + chat area with dark theme
+954d14f feat: add chat-style UI with sidebar, timeline, and inline cards
+c780ca5 feat: add in-memory session store for chat history
+875a484 fix: update legacy decision card for nullable evidence fields
+1fb56fc feat: add DexScreener live public signals provider with fallback
+5aef9a7 feat: extend schemas with nullable fields and chat message types
+```
 
 ## User Feedback (Session 2)
 
-- "Too fast, no steps shown" → Adding SSE streaming with step-by-step progress
-- "Not going through SolRouter" → Mock inference active by default; need API key for live
-- "UI needs work" → Full redesign with retro terminal aesthetic, dark/light themes
-- "Show roadmap features" → Adding Soon/Closed Beta labels in sidebar
-- "Focus on SolRouter integration" → Priority 1 for next work
-- "Deep research mode" → Using SolRouter for multi-step private research
+1. "Too fast, no steps shown" → SSE streaming endpoint built, UI needs to consume it
+2. "Not going through SolRouter" → Mock is default without API key; adapter is ready
+3. "UI needs work" → Full retro terminal redesign done (CSS + components), chat-view needs finishing
+4. "Show roadmap features" → Sidebar now has live/soon/beta/planned roadmap
+5. "Focus on SolRouter integration" → Priority 1 after UI is wired up
+6. "Deep research mode" → Planned as multi-phase SolRouter investigation
+7. "Research existing AI company UIs" → Reference notes added above
+8. "Commit frequently" → 14 granular commits this session
 
 ## Commands
 
 ```bash
 npm install
-npm run dev          # Start dev server at localhost:3000
-npm run typecheck    # Type check all workspaces
-npm run test         # Run vitest
-npm run build        # Production build
+npm run dev          # localhost:3000
+npm run typecheck    # All workspaces
+npm run test         # Vitest
+npm run build        # Production (delete .next first if EPERM)
 ```
 
 ## Git Identity
