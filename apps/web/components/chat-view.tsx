@@ -5,7 +5,6 @@ import {
   useRef,
   useEffect,
   useCallback,
-  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent
 } from "react";
@@ -28,36 +27,68 @@ interface WorkflowStep {
   detail?: string;
 }
 
-interface Template {
-  id: string;
-  label: string;
-  description: string;
-  placeholder: string;
-  enabled: boolean;
+type ConversationPhase =
+  | "idle"            // waiting for user to type a token
+  | "ask-risk"        // asking risk tolerance
+  | "ask-horizon"     // asking time horizon
+  | "ask-depth"       // asking quick scan vs deep research
+  | "investigating";  // running the workflow
+
+interface PendingInvestigation {
+  tokenQuery: string;
+  riskMode: "safe" | "balanced" | "aggressive";
+  timeHorizon: "short" | "mid" | "long";
+  depth: "quick" | "deep";
 }
 
-const TEMPLATES: Template[] = [
+interface RoadmapFeature {
+  label: string;
+  description: string;
+  badge: "live" | "soon" | "beta" | "planned";
+  action?: string; // template id to activate
+}
+
+const FEATURES: RoadmapFeature[] = [
   {
-    id: "investigate-token",
     label: "Investigate Token",
-    description: "Analyze a Solana token's risk, liquidity, and market signals privately",
-    placeholder: "Enter a token mint address or symbol (e.g., BONK, SOL, JUP)...",
-    enabled: true
+    description: "Analyze risk, liquidity, and market signals privately via SolRouter",
+    badge: "live",
+    action: "investigate-token"
   },
   {
-    id: "compare-tokens",
+    label: "Deep Research",
+    description: "Multi-phase analysis with holder patterns, authority audit, and LP analysis",
+    badge: "live",
+    action: "investigate-token"
+  },
+  {
+    label: "DexScreener Live",
+    description: "Real-time Solana market data from DexScreener API",
+    badge: "live"
+  },
+  {
     label: "Compare Tokens",
-    description: "Side-by-side comparison of two tokens (coming soon)",
-    placeholder: "Compare feature coming soon...",
-    enabled: false
+    description: "Side-by-side risk comparison of two tokens",
+    badge: "soon"
   },
   {
-    id: "portfolio-scan",
     label: "Portfolio Scan",
-    description: "Scan a wallet's holdings for risk exposure (coming soon)",
-    placeholder: "Portfolio scan coming soon...",
-    enabled: false
+    description: "Scan a wallet's holdings for risk exposure",
+    badge: "beta"
+  },
+  {
+    label: "Jupiter Swap Sim",
+    description: "Quote-only swap simulation via Jupiter",
+    badge: "planned"
   }
+];
+
+const SOLROUTER_MODELS = [
+  { value: "gpt-oss-20b", label: "GPT-OSS 20B" },
+  { value: "gemini-flash", label: "Gemini Flash" },
+  { value: "claude-sonnet", label: "Claude Sonnet" },
+  { value: "claude-sonnet-4", label: "Claude Sonnet 4" },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini" }
 ];
 
 /* ------------------------------------------------------------------ */
@@ -87,14 +118,10 @@ function formatTime(iso: string): string {
 
 function stepIcon(status: string): string {
   switch (status) {
-    case "running":
-      return "\u25CF"; // ●
-    case "done":
-      return "\u2713"; // ✓
-    case "error":
-      return "\u2717"; // ✗
-    default:
-      return "\u25CB"; // ○
+    case "running": return "\u25CF";
+    case "done":    return "\u2713";
+    case "error":   return "\u2717";
+    default:        return "\u25CB";
   }
 }
 
@@ -132,19 +159,11 @@ async function consumeSSE(
         try {
           const parsed = JSON.parse(dataStr);
           switch (eventType) {
-            case "step":
-              onStep(parsed as WorkflowStep);
-              break;
-            case "result":
-              onResult(parsed as WorkflowResponse);
-              break;
-            case "error":
-              onError(parsed.error ?? "Unknown error");
-              break;
+            case "step":   onStep(parsed as WorkflowStep); break;
+            case "result": onResult(parsed as WorkflowResponse); break;
+            case "error":  onError(parsed.error ?? "Unknown error"); break;
           }
-        } catch {
-          // skip malformed events
-        }
+        } catch { /* skip malformed */ }
         eventType = "";
         dataStr = "";
       }
@@ -160,156 +179,208 @@ export function ChatView() {
   const session = useActiveSession();
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [riskMode, setRiskMode] = useState<"safe" | "balanced" | "aggressive">("balanced");
-  const [timeHorizon, setTimeHorizon] = useState<"short" | "mid" | "long">("mid");
-  const [activeTemplate, setActiveTemplate] = useState<string>("investigate-token");
+  const [showSettings, setShowSettings] = useState(false);
+  const [model, setModel] = useState("gpt-oss-20b");
+
+  // Conversational MCQ state
+  const [phase, setPhase] = useState<ConversationPhase>("idle");
+  const [pending, setPending] = useState<Partial<PendingInvestigation>>({});
 
   // Streaming state
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const messages = session?.messages ?? [];
 
-  // Auto-scroll to bottom on new messages or steps
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isLoading, workflowSteps.length]);
+  }, [messages.length, isLoading, workflowSteps.length, phase]);
 
-  // Focus input on session change
+  // Focus input
   useEffect(() => {
     inputRef.current?.focus();
-  }, [session?.id]);
+  }, [session?.id, phase]);
+
+  // Close settings dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const handleStep = useCallback((step: WorkflowStep) => {
     setWorkflowSteps((prev) => {
       const idx = prev.findIndex((s) => s.step === step.step);
       if (idx >= 0) {
-        // Update existing step
         const updated = [...prev];
         updated[idx] = step;
         return updated;
       }
-      // Add new step
       return [...prev, step];
     });
   }, []);
 
+  /* ---------- MCQ option handler ---------- */
+
+  function handleMCQChoice(choice: string) {
+    let sid = session?.id;
+    if (!sid) { sid = createSession().id; }
+
+    // Add user's choice as a message
+    addMessage(sid, createChatMessage("user", choice));
+
+    if (phase === "ask-risk") {
+      const riskMap: Record<string, "safe" | "balanced" | "aggressive"> = {
+        "Conservative / Safe": "safe",
+        "Balanced": "balanced",
+        "Aggressive / Degen": "aggressive"
+      };
+      const riskMode = riskMap[choice] ?? "balanced";
+      setPending((p) => ({ ...p, riskMode }));
+
+      // Ask horizon next
+      addMessage(sid, createChatMessage("assistant",
+        "What's your time horizon for this position?"
+      ));
+      setPhase("ask-horizon");
+
+    } else if (phase === "ask-horizon") {
+      const horizonMap: Record<string, "short" | "mid" | "long"> = {
+        "Short (hours\u2013days)": "short",
+        "Mid (days\u2013weeks)": "mid",
+        "Long (weeks\u2013months)": "long"
+      };
+      const timeHorizon = horizonMap[choice] ?? "mid";
+      setPending((p) => ({ ...p, timeHorizon }));
+
+      // Ask depth
+      addMessage(sid, createChatMessage("assistant",
+        "How deep should I investigate?"
+      ));
+      setPhase("ask-depth");
+
+    } else if (phase === "ask-depth") {
+      const depth = choice === "Deep Research" ? "deep" : "quick";
+      const finalPending = { ...pending, depth } as PendingInvestigation;
+      setPending(finalPending);
+
+      // Now run the investigation
+      addMessage(sid, createChatMessage("assistant",
+        `Starting ${depth === "deep" ? "deep research" : "quick scan"} for **${finalPending.tokenQuery}**...`
+      ));
+      setPhase("investigating");
+      runInvestigation(sid, finalPending);
+    }
+  }
+
+  /* ---------- Submit handler ---------- */
+
   async function handleSubmit(event?: FormEvent) {
     event?.preventDefault();
     const text = inputValue.trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || phase !== "idle") return;
 
-    // Ensure we have a session
     let sid = session?.id;
-    if (!sid) {
-      const s = createSession();
-      sid = s.id;
-    }
+    if (!sid) { sid = createSession().id; }
 
     // Add user message
-    const userMsg = createChatMessage("user", text, {
-      templateId: activeTemplate
-    });
-    addMessage(sid, userMsg);
+    addMessage(sid, createChatMessage("user", text));
     setInputValue("");
+
+    // Start conversational flow — ask risk tolerance
+    setPending({ tokenQuery: text });
+    addMessage(sid, createChatMessage("assistant",
+      `Investigating **${text}**. First, what's your risk tolerance?`
+    ));
+    setPhase("ask-risk");
+  }
+
+  /* ---------- Run investigation ---------- */
+
+  async function runInvestigation(sid: string, config: PendingInvestigation) {
     setIsLoading(true);
     setWorkflowSteps([]);
 
-    if (activeTemplate === "investigate-token") {
-      try {
-        const payload: InvestigationRequest = {
-          tokenQuery: text,
-          riskMode,
-          timeHorizon,
-          notes: "",
-          walletContext: ""
-        };
+    try {
+      const payload: InvestigationRequest = {
+        tokenQuery: config.tokenQuery,
+        riskMode: config.riskMode,
+        timeHorizon: config.timeHorizon,
+        notes: config.depth === "deep" ? "deep-research" : "",
+        walletContext: ""
+      };
 
-        const res = await fetch("/api/workflow/investigate-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+      const endpoint = config.depth === "deep"
+        ? "/api/workflow/deep-research"
+        : "/api/workflow/investigate-token";
 
-        if (!res.ok) {
-          let errorMsg = "Unknown error";
-          try {
-            const errData = await res.json();
-            errorMsg = errData.error ?? errorMsg;
-          } catch {
-            // non-JSON error
-          }
-          const errMsg = createChatMessage(
-            "assistant",
-            `I couldn't complete the investigation: ${errorMsg}. Try checking the token address or symbol and retry.`
-          );
-          addMessage(sid, errMsg);
-          setIsLoading(false);
-          setWorkflowSteps([]);
-          return;
-        }
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
 
-        // Consume the SSE stream
-        let finalResult: WorkflowResponse | null = null;
-
-        await consumeSSE(
-          res,
-          handleStep,
-          (result) => {
-            finalResult = result;
-          },
-          (error) => {
-            const errMsg = createChatMessage(
-              "assistant",
-              `Investigation failed: ${error}`
-            );
-            addMessage(sid!, errMsg);
-          }
-        );
-
-        if (finalResult) {
-          const workflow = finalResult as WorkflowResponse;
-          const evidence = workflow.evidence;
-          const risk = workflow.decision;
-
-          const summary = [
-            `Investigation complete for **${evidence.token.name ?? evidence.token.symbol ?? text}**.`,
-            "",
-            `Risk level: **${risk.overallRisk.toUpperCase()}** (score ${risk.score}/100).`,
-            risk.topRisks.length > 0
-              ? `Top concern: ${risk.topRisks[0].label} \u2014 ${risk.topRisks[0].evidence}`
-              : "",
-            "",
-            "Full decision card with market data, risk factors, and strategy options below."
-          ]
-            .filter(Boolean)
-            .join("\n");
-
-          const assistantMsg = createChatMessage("assistant", summary, {
-            workflowResponse: workflow,
-            templateId: activeTemplate
-          });
-          addMessage(sid, assistantMsg);
-        }
-      } catch (err) {
-        const errMsg = createChatMessage(
-          "assistant",
-          `Something went wrong while running the investigation. ${err instanceof Error ? err.message : "Please try again."}`
-        );
-        addMessage(sid, errMsg);
+      if (!res.ok) {
+        let errorMsg = "Unknown error";
+        try { const d = await res.json(); errorMsg = d.error ?? errorMsg; } catch { /* */ }
+        addMessage(sid, createChatMessage("assistant",
+          `Investigation failed: ${errorMsg}. Check the token address or symbol and try again.`
+        ));
+        resetFlow();
+        return;
       }
-    } else {
-      const pendingMsg = createChatMessage(
-        "assistant",
-        `The **${TEMPLATES.find((t) => t.id === activeTemplate)?.label ?? activeTemplate}** template is coming soon. For now, you can use **Investigate Token** to analyze any Solana token.`
+
+      let finalResult: WorkflowResponse | null = null;
+
+      await consumeSSE(
+        res,
+        handleStep,
+        (result) => { finalResult = result; },
+        (error) => {
+          addMessage(sid, createChatMessage("assistant", `Investigation failed: ${error}`));
+        }
       );
-      addMessage(sid, pendingMsg);
+
+      if (finalResult) {
+        const workflow = finalResult as WorkflowResponse;
+        const evidence = workflow.evidence;
+        const risk = workflow.decision;
+
+        const summary = [
+          `Investigation complete for **${evidence.token.name ?? evidence.token.symbol ?? config.tokenQuery}**.`,
+          "",
+          `Risk level: **${risk.overallRisk.toUpperCase()}** (score ${risk.score}/100).`,
+          risk.topRisks.length > 0
+            ? `Top concern: ${risk.topRisks[0].label} \u2014 ${risk.topRisks[0].evidence}`
+            : ""
+        ].filter(Boolean).join("\n");
+
+        addMessage(sid, createChatMessage("assistant", summary, {
+          workflowResponse: workflow
+        }));
+      }
+    } catch (err) {
+      addMessage(sid, createChatMessage("assistant",
+        `Something went wrong. ${err instanceof Error ? err.message : "Please try again."}`
+      ));
     }
 
+    resetFlow();
+  }
+
+  function resetFlow() {
     setIsLoading(false);
     setWorkflowSteps([]);
+    setPhase("idle");
+    setPending({});
     inputRef.current?.focus();
   }
 
@@ -320,26 +391,33 @@ export function ChatView() {
     }
   }
 
-  function handleTemplateClick(templateId: string) {
-    setActiveTemplate(templateId);
-    if (!TEMPLATES.find((t) => t.id === templateId)?.enabled) return;
-    if (!session) createSession();
-    inputRef.current?.focus();
+  /* ---------- MCQ options per phase ---------- */
+
+  function getMCQOptions(): string[] {
+    switch (phase) {
+      case "ask-risk":
+        return ["Conservative / Safe", "Balanced", "Aggressive / Degen"];
+      case "ask-horizon":
+        return ["Short (hours\u2013days)", "Mid (days\u2013weeks)", "Long (weeks\u2013months)"];
+      case "ask-depth":
+        return ["Quick Scan", "Deep Research"];
+      default:
+        return [];
+    }
   }
 
-  const currentTemplate = TEMPLATES.find((t) => t.id === activeTemplate) ?? TEMPLATES[0];
-  const isActive = currentTemplate.enabled;
+  const mcqOptions = getMCQOptions();
+  const showMCQ = mcqOptions.length > 0 && !isLoading;
 
   return (
     <div className="chat-area">
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-left">
-          <h2>{currentTemplate.label}</h2>
+          <h2>Investigate Token</h2>
           <div className="provider-tags">
-            <span className="provider-tag active">DexScreener Live</span>
-            <span className="provider-tag">SolRouter</span>
-            <span className="provider-tag">Devnet</span>
+            <span className="provider-tag active">DexScreener</span>
+            <span className="provider-tag active">SolRouter</span>
           </div>
         </div>
       </div>
@@ -347,7 +425,7 @@ export function ChatView() {
       {/* Messages */}
       <div className="messages-container">
         <div className="messages-inner">
-          {messages.length === 0 && !isLoading ? (
+          {messages.length === 0 && !isLoading && phase === "idle" ? (
             <div className="welcome-screen">
               <div className="welcome-brand">
                 Intent<span>Vault</span>
@@ -357,26 +435,27 @@ export function ChatView() {
                 stay public. Your intent and strategy stay inside the private
                 inference boundary.
               </p>
-              <div className="template-grid">
-                {TEMPLATES.map((tmpl) => (
-                  <button
-                    key={tmpl.id}
-                    className="template-btn"
-                    onClick={() => handleTemplateClick(tmpl.id)}
-                    disabled={!tmpl.enabled}
+
+              <div className="feature-grid">
+                {FEATURES.map((f) => (
+                  <div
+                    key={f.label}
+                    className={`feature-card ${f.action ? "clickable" : ""}`}
+                    onClick={() => {
+                      if (f.action) inputRef.current?.focus();
+                    }}
                   >
-                    <span className="template-btn-name">{tmpl.label}</span>
-                    <span className="template-btn-desc">{tmpl.description}</span>
-                    {!tmpl.enabled && (
-                      <span className="template-btn-badge" style={{ background: "var(--warning-dim)", color: "var(--warning)" }}>
-                        soon
-                      </span>
-                    )}
-                  </button>
+                    <div className="feature-card-top">
+                      <span className={`feature-badge ${f.badge}`}>{f.badge}</span>
+                      <span className="feature-name">{f.label}</span>
+                    </div>
+                    <span className="feature-desc">{f.description}</span>
+                  </div>
                 ))}
               </div>
+
               <div className="welcome-hint">
-                try: BONK, SOL, JUP, or any Solana mint address
+                type a token name or mint address to start
               </div>
             </div>
           ) : (
@@ -413,7 +492,22 @@ export function ChatView() {
             </>
           )}
 
-          {/* Live workflow steps during streaming */}
+          {/* MCQ choices */}
+          {showMCQ && (
+            <div className="mcq-container">
+              {mcqOptions.map((opt) => (
+                <button
+                  key={opt}
+                  className="mcq-btn"
+                  onClick={() => handleMCQChoice(opt)}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Live workflow steps */}
           {isLoading && workflowSteps.length > 0 && (
             <div className="message">
               <div className="msg-indicator assistant" />
@@ -437,19 +531,14 @@ export function ChatView() {
             </div>
           )}
 
-          {/* Fallback loading indicator when no steps yet */}
           {isLoading && workflowSteps.length === 0 && (
             <div className="message">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
-                <div className="msg-meta">
-                  <span className="msg-sender assistant">intentvault</span>
-                  <span className="msg-time">now</span>
-                </div>
                 <div className="workflow-steps">
                   <div className="wf-step running">
                     <span className="wf-step-icon">{stepIcon("running")}</span>
-                    <span className="wf-step-label">Connecting to investigation pipeline...</span>
+                    <span className="wf-step-label">Connecting to pipeline...</span>
                   </div>
                 </div>
               </div>
@@ -463,74 +552,69 @@ export function ChatView() {
       {/* Input bar */}
       <div className="input-bar">
         <div className="input-bar-inner">
-          <div className="input-config">
-            <label>Template:</label>
-            <select
-              className="cfg-select"
-              value={activeTemplate}
-              onChange={(e) => setActiveTemplate(e.target.value)}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                  {!t.enabled ? " (soon)" : ""}
-                </option>
-              ))}
-            </select>
-
-            <div className="cfg-divider" />
-
-            <label>Risk:</label>
-            <select
-              className="cfg-select"
-              value={riskMode}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                setRiskMode(e.target.value as typeof riskMode)
-              }
-            >
-              <option value="safe">Safe</option>
-              <option value="balanced">Balanced</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
-
-            <label>Horizon:</label>
-            <select
-              className="cfg-select"
-              value={timeHorizon}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                setTimeHorizon(e.target.value as typeof timeHorizon)
-              }
-            >
-              <option value="short">Short</option>
-              <option value="mid">Mid</option>
-              <option value="long">Long</option>
-            </select>
-          </div>
-
           <form className="input-row" onSubmit={handleSubmit}>
-            <textarea
-              ref={inputRef}
-              className="input-field"
-              placeholder={currentTemplate.placeholder}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={1}
-              disabled={isLoading || !isActive}
-            />
-            <button
-              type="submit"
-              className="send-btn"
-              disabled={!inputValue.trim() || isLoading || !isActive}
-              title="Investigate"
-            >
-              &rarr;
-            </button>
+            <div className="input-wrapper">
+              <textarea
+                ref={inputRef}
+                className="input-field"
+                placeholder={phase === "idle"
+                  ? "Enter a token name or mint address..."
+                  : "Select an option above..."
+                }
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+                disabled={isLoading || phase !== "idle"}
+              />
+              <div className="input-controls">
+                <div className="settings-wrapper" ref={settingsRef}>
+                  <button
+                    type="button"
+                    className={`settings-trigger ${showSettings ? "open" : ""}`}
+                    onClick={() => setShowSettings(!showSettings)}
+                    title="Model & settings"
+                  >
+                    <span className="settings-model-name">
+                      {SOLROUTER_MODELS.find((m) => m.value === model)?.label ?? model}
+                    </span>
+                    <span className="settings-chevron">{showSettings ? "\u25B4" : "\u25BE"}</span>
+                  </button>
+
+                  {showSettings && (
+                    <div className="settings-dropdown">
+                      <div className="settings-section">
+                        <div className="settings-label">SolRouter Model</div>
+                        {SOLROUTER_MODELS.map((m) => (
+                          <button
+                            key={m.value}
+                            type="button"
+                            className={`settings-option ${model === m.value ? "active" : ""}`}
+                            onClick={() => { setModel(m.value); setShowSettings(false); }}
+                          >
+                            {m.label}
+                            {model === m.value && <span className="settings-check">{"\u2713"}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="send-btn"
+                  disabled={!inputValue.trim() || isLoading || phase !== "idle"}
+                  title="Investigate"
+                >
+                  &rarr;
+                </button>
+              </div>
+            </div>
           </form>
 
           <div className="input-footer">
-            Enter a token mint address or symbol. Your intent stays private.
-            Solana Devnet &middot; No wallet signing &middot; No server history
+            Your intent stays private &middot; Solana Devnet &middot; No wallet signing
           </div>
         </div>
       </div>
