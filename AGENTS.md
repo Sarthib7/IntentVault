@@ -31,6 +31,13 @@ IntentVault is a private workflow layer for Solana decision support. The current
 - Preserve the current package boundaries. If you need a new boundary, document the reason in `docs/architecture.md`.
 - Treat the PRD as product source material, not implementation code. Keep it unchanged.
 
+## Git Commit Identity
+
+- All commits in this repo must use the git author identity below unless the user explicitly overrides it.
+- `user.name`: `sarthib7`
+- `user.email`: `sarthiborkar7@gmail.com`
+- Before creating commits, verify the local git config matches those values.
+
 ## Suggested Task Ownership
 
 - UI and interaction work: `apps/web`
@@ -48,4 +55,3 @@ npm run typecheck
 npm run test
 npm run build
 ```
-
