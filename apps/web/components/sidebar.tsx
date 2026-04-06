@@ -34,7 +34,7 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
           onClick={onToggleTheme}
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         >
-          {theme === "dark" ? "☀" : "☾"}
+          {theme === "dark" ? "\u2600" : "\u263E"}
         </button>
       </div>
 
@@ -58,57 +58,13 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
         ))}
       </div>
 
-      <div className="sidebar-roadmap">
-        <h3>// roadmap</h3>
-        <div className="roadmap-item">
-          <span className="roadmap-badge live">live</span>
-          <span>Investigate Token</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge live">live</span>
-          <span>DexScreener Data</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge live">live</span>
-          <span>SolRouter Inference</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge soon">soon</span>
-          <span>Deep Research Mode</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge soon">soon</span>
-          <span>Research Artifacts</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge beta">beta</span>
-          <span>Compare Tokens</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge beta">beta</span>
-          <span>Portfolio Risk Scan</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge beta">beta</span>
-          <span>Wallet Connection</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge planned">future</span>
-          <span>Jupiter Swap Sim</span>
-        </div>
-        <div className="roadmap-item">
-          <span className="roadmap-badge planned">future</span>
-          <span>x402 Paid Tools</span>
-        </div>
-      </div>
-
       <div className="sidebar-footer">
         <span>
           Powered by{" "}
           <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
             SolRouter
           </a>
-          {" "}· Solana Devnet
+          {" "}&middot; Solana Devnet
         </span>
       </div>
     </aside>
