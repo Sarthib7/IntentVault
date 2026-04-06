@@ -28,11 +28,11 @@ interface WorkflowStep {
 }
 
 type ConversationPhase =
-  | "idle"            // waiting for user to type a token
-  | "ask-risk"        // asking risk tolerance
-  | "ask-horizon"     // asking time horizon
-  | "ask-depth"       // asking quick scan vs deep research
-  | "investigating";  // running the workflow
+  | "idle"
+  | "ask-risk"
+  | "ask-horizon"
+  | "ask-depth"
+  | "investigating";
 
 interface PendingInvestigation {
   tokenQuery: string;
@@ -41,54 +41,62 @@ interface PendingInvestigation {
   depth: "quick" | "deep";
 }
 
-interface RoadmapFeature {
-  label: string;
+const SOLROUTER_MODELS = [
+  { value: "gpt-oss-20b", label: "GPT-OSS 20B", cost: "$0.15/M" },
+  { value: "gemini-flash", label: "Gemini Flash", cost: "$0.08/M" },
+  { value: "claude-sonnet", label: "Claude Sonnet", cost: "$3.00/M" },
+  { value: "claude-sonnet-4", label: "Claude Sonnet 4", cost: "$3.00/M" },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini", cost: "$0.15/M" }
+];
+
+/* ------------------------------------------------------------------ */
+/* Welcome screen content                                              */
+/* ------------------------------------------------------------------ */
+
+interface Capability {
+  icon: string;
+  title: string;
   description: string;
-  badge: "live" | "soon" | "beta" | "planned";
-  action?: string; // template id to activate
+  badge: "live" | "soon" | "planned";
 }
 
-const FEATURES: RoadmapFeature[] = [
+const CAPABILITIES: Capability[] = [
   {
-    label: "Investigate Token",
-    description: "Analyze risk, liquidity, and market signals privately via SolRouter",
-    badge: "live",
-    action: "investigate-token"
-  },
-  {
-    label: "Deep Research",
-    description: "Multi-phase analysis with holder patterns, authority audit, and LP analysis",
-    badge: "live",
-    action: "investigate-token"
-  },
-  {
-    label: "DexScreener Live",
-    description: "Real-time Solana market data from DexScreener API",
+    icon: "\uD83D\uDD12",
+    title: "Encrypted Inference",
+    description: "Your intent is encrypted client-side via Arcium RescueCipher. SolRouter never sees plaintext.",
     badge: "live"
   },
   {
-    label: "Compare Tokens",
-    description: "Side-by-side risk comparison of two tokens",
+    icon: "\uD83D\uDD0D",
+    title: "Research Agent",
+    description: "Multi-phase deep research with holder analysis, authority audit, and liquidity depth.",
+    badge: "live"
+  },
+  {
+    icon: "\uD83C\uDFAF",
+    title: "Intent Signals",
+    description: "Understand what your query reveals publicly vs. what stays inside the privacy boundary.",
     badge: "soon"
   },
   {
-    label: "Portfolio Scan",
-    description: "Scan a wallet's holdings for risk exposure",
-    badge: "beta"
+    icon: "\uD83E\uDDE0",
+    title: "Strategy Synthesis",
+    description: "Personalized risk-adjusted strategies generated through private inference.",
+    badge: "live"
   },
   {
-    label: "Jupiter Swap Sim",
-    description: "Quote-only swap simulation via Jupiter",
+    icon: "\u26D3\uFE0F",
+    title: "On-Chain Attestation",
+    description: "Verify privacy guarantees with SolRouter attestation IDs on Solana.",
+    badge: "soon"
+  },
+  {
+    icon: "\uD83D\uDCCA",
+    title: "Portfolio Risk Scan",
+    description: "Scan wallet holdings for risk exposure without revealing your strategy.",
     badge: "planned"
   }
-];
-
-const SOLROUTER_MODELS = [
-  { value: "gpt-oss-20b", label: "GPT-OSS 20B" },
-  { value: "gemini-flash", label: "Gemini Flash" },
-  { value: "claude-sonnet", label: "Claude Sonnet" },
-  { value: "claude-sonnet-4", label: "Claude Sonnet 4" },
-  { value: "gpt-4o-mini", label: "GPT-4o Mini" }
 ];
 
 /* ------------------------------------------------------------------ */
@@ -182,11 +190,11 @@ export function ChatView() {
   const [showSettings, setShowSettings] = useState(false);
   const [model, setModel] = useState("gpt-oss-20b");
 
-  // Conversational MCQ state
+  // Conversational MCQ
   const [phase, setPhase] = useState<ConversationPhase>("idle");
   const [pending, setPending] = useState<Partial<PendingInvestigation>>({});
 
-  // Streaming state
+  // Streaming
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -195,17 +203,14 @@ export function ChatView() {
 
   const messages = session?.messages ?? [];
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, isLoading, workflowSteps.length, phase]);
 
-  // Focus input
   useEffect(() => {
     inputRef.current?.focus();
   }, [session?.id, phase]);
 
-  // Close settings dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
@@ -228,60 +233,47 @@ export function ChatView() {
     });
   }, []);
 
-  /* ---------- MCQ option handler ---------- */
+  /* ---------- MCQ handler ---------- */
 
   function handleMCQChoice(choice: string) {
     let sid = session?.id;
     if (!sid) { sid = createSession().id; }
 
-    // Add user's choice as a message
     addMessage(sid, createChatMessage("user", choice));
 
     if (phase === "ask-risk") {
       const riskMap: Record<string, "safe" | "balanced" | "aggressive"> = {
-        "Conservative / Safe": "safe",
+        "Conservative": "safe",
         "Balanced": "balanced",
-        "Aggressive / Degen": "aggressive"
+        "Aggressive": "aggressive"
       };
-      const riskMode = riskMap[choice] ?? "balanced";
-      setPending((p) => ({ ...p, riskMode }));
-
-      // Ask horizon next
-      addMessage(sid, createChatMessage("assistant",
-        "What's your time horizon for this position?"
-      ));
+      setPending((p) => ({ ...p, riskMode: riskMap[choice] ?? "balanced" }));
+      addMessage(sid, createChatMessage("assistant", "Time horizon for this position?"));
       setPhase("ask-horizon");
 
     } else if (phase === "ask-horizon") {
       const horizonMap: Record<string, "short" | "mid" | "long"> = {
         "Short (hours\u2013days)": "short",
         "Mid (days\u2013weeks)": "mid",
-        "Long (weeks\u2013months)": "long"
+        "Long (weeks+)": "long"
       };
-      const timeHorizon = horizonMap[choice] ?? "mid";
-      setPending((p) => ({ ...p, timeHorizon }));
-
-      // Ask depth
-      addMessage(sid, createChatMessage("assistant",
-        "How deep should I investigate?"
-      ));
+      setPending((p) => ({ ...p, timeHorizon: horizonMap[choice] ?? "mid" }));
+      addMessage(sid, createChatMessage("assistant", "How deep should SolRouter investigate?"));
       setPhase("ask-depth");
 
     } else if (phase === "ask-depth") {
       const depth = choice === "Deep Research" ? "deep" : "quick";
       const finalPending = { ...pending, depth } as PendingInvestigation;
       setPending(finalPending);
-
-      // Now run the investigation
       addMessage(sid, createChatMessage("assistant",
-        `Starting ${depth === "deep" ? "deep research" : "quick scan"} for **${finalPending.tokenQuery}**...`
+        `Routing to SolRouter ${depth === "deep" ? "deep research" : "quick scan"} pipeline...`
       ));
       setPhase("investigating");
       runInvestigation(sid, finalPending);
     }
   }
 
-  /* ---------- Submit handler ---------- */
+  /* ---------- Submit ---------- */
 
   async function handleSubmit(event?: FormEvent) {
     event?.preventDefault();
@@ -291,19 +283,16 @@ export function ChatView() {
     let sid = session?.id;
     if (!sid) { sid = createSession().id; }
 
-    // Add user message
     addMessage(sid, createChatMessage("user", text));
     setInputValue("");
-
-    // Start conversational flow — ask risk tolerance
     setPending({ tokenQuery: text });
     addMessage(sid, createChatMessage("assistant",
-      `Investigating **${text}**. First, what's your risk tolerance?`
+      `Analyzing intent for **${text}**. What's your risk tolerance?`
     ));
     setPhase("ask-risk");
   }
 
-  /* ---------- Run investigation ---------- */
+  /* ---------- Investigation ---------- */
 
   async function runInvestigation(sid: string, config: PendingInvestigation) {
     setIsLoading(true);
@@ -332,7 +321,7 @@ export function ChatView() {
         let errorMsg = "Unknown error";
         try { const d = await res.json(); errorMsg = d.error ?? errorMsg; } catch { /* */ }
         addMessage(sid, createChatMessage("assistant",
-          `Investigation failed: ${errorMsg}. Check the token address or symbol and try again.`
+          `SolRouter pipeline error: ${errorMsg}`
         ));
         resetFlow();
         return;
@@ -345,7 +334,7 @@ export function ChatView() {
         handleStep,
         (result) => { finalResult = result; },
         (error) => {
-          addMessage(sid, createChatMessage("assistant", `Investigation failed: ${error}`));
+          addMessage(sid, createChatMessage("assistant", `Pipeline error: ${error}`));
         }
       );
 
@@ -355,12 +344,14 @@ export function ChatView() {
         const risk = workflow.decision;
 
         const summary = [
-          `Investigation complete for **${evidence.token.name ?? evidence.token.symbol ?? config.tokenQuery}**.`,
+          `**${evidence.token.name ?? evidence.token.symbol ?? config.tokenQuery}** \u2014 SolRouter analysis complete.`,
           "",
-          `Risk level: **${risk.overallRisk.toUpperCase()}** (score ${risk.score}/100).`,
+          `Risk: **${risk.overallRisk.toUpperCase()}** (${risk.score}/100)`,
           risk.topRisks.length > 0
-            ? `Top concern: ${risk.topRisks[0].label} \u2014 ${risk.topRisks[0].evidence}`
-            : ""
+            ? `Primary concern: ${risk.topRisks[0].label}`
+            : "",
+          "",
+          `Inference: ${workflow.runtime.inferenceProvider} \u00B7 Signals: ${workflow.runtime.signalsProvider}`
         ].filter(Boolean).join("\n");
 
         addMessage(sid, createChatMessage("assistant", summary, {
@@ -369,7 +360,7 @@ export function ChatView() {
       }
     } catch (err) {
       addMessage(sid, createChatMessage("assistant",
-        `Something went wrong. ${err instanceof Error ? err.message : "Please try again."}`
+        `Error: ${err instanceof Error ? err.message : "Please try again."}`
       ));
     }
 
@@ -391,33 +382,30 @@ export function ChatView() {
     }
   }
 
-  /* ---------- MCQ options per phase ---------- */
-
   function getMCQOptions(): string[] {
     switch (phase) {
-      case "ask-risk":
-        return ["Conservative / Safe", "Balanced", "Aggressive / Degen"];
-      case "ask-horizon":
-        return ["Short (hours\u2013days)", "Mid (days\u2013weeks)", "Long (weeks\u2013months)"];
-      case "ask-depth":
-        return ["Quick Scan", "Deep Research"];
-      default:
-        return [];
+      case "ask-risk":    return ["Conservative", "Balanced", "Aggressive"];
+      case "ask-horizon": return ["Short (hours\u2013days)", "Mid (days\u2013weeks)", "Long (weeks+)"];
+      case "ask-depth":   return ["Quick Scan", "Deep Research"];
+      default:            return [];
     }
   }
 
   const mcqOptions = getMCQOptions();
   const showMCQ = mcqOptions.length > 0 && !isLoading;
+  const currentModel = SOLROUTER_MODELS.find((m) => m.value === model);
 
   return (
     <div className="chat-area">
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-left">
-          <h2>Investigate Token</h2>
+          <h2>IntentVault</h2>
           <div className="provider-tags">
-            <span className="provider-tag active">DexScreener</span>
-            <span className="provider-tag active">SolRouter</span>
+            <span className="provider-tag active" title="End-to-end encrypted inference">
+              SolRouter Encrypted
+            </span>
+            <span className="provider-tag">{currentModel?.label ?? model}</span>
           </div>
         </div>
       </div>
@@ -431,31 +419,29 @@ export function ChatView() {
                 Intent<span>Vault</span>
               </div>
               <p className="welcome-desc">
-                Privacy-first Solana token investigation. Public market signals
-                stay public. Your intent and strategy stay inside the private
-                inference boundary.
+                Private decision workflows powered by{" "}
+                <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
+                  SolRouter
+                </a>
+                's encrypted inference. Your intent never leaves the privacy boundary.
+                Public signals flow in. Private reasoning stays encrypted.
               </p>
 
               <div className="feature-grid">
-                {FEATURES.map((f) => (
-                  <div
-                    key={f.label}
-                    className={`feature-card ${f.action ? "clickable" : ""}`}
-                    onClick={() => {
-                      if (f.action) inputRef.current?.focus();
-                    }}
-                  >
+                {CAPABILITIES.map((cap) => (
+                  <div key={cap.title} className="feature-card">
                     <div className="feature-card-top">
-                      <span className={`feature-badge ${f.badge}`}>{f.badge}</span>
-                      <span className="feature-name">{f.label}</span>
+                      <span className="feature-icon">{cap.icon}</span>
+                      <span className={`feature-badge ${cap.badge}`}>{cap.badge}</span>
                     </div>
-                    <span className="feature-desc">{f.description}</span>
+                    <span className="feature-name">{cap.title}</span>
+                    <span className="feature-desc">{cap.description}</span>
                   </div>
                 ))}
               </div>
 
               <div className="welcome-hint">
-                type a token name or mint address to start
+                describe your intent \u2014 e.g. "Should I buy BONK?" or "What's the risk on JUP?"
               </div>
             </div>
           ) : (
@@ -492,28 +478,24 @@ export function ChatView() {
             </>
           )}
 
-          {/* MCQ choices */}
+          {/* MCQ */}
           {showMCQ && (
             <div className="mcq-container">
               {mcqOptions.map((opt) => (
-                <button
-                  key={opt}
-                  className="mcq-btn"
-                  onClick={() => handleMCQChoice(opt)}
-                >
+                <button key={opt} className="mcq-btn" onClick={() => handleMCQChoice(opt)}>
                   {opt}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Live workflow steps */}
+          {/* Steps */}
           {isLoading && workflowSteps.length > 0 && (
             <div className="message">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
                 <div className="msg-meta">
-                  <span className="msg-sender assistant">intentvault</span>
+                  <span className="msg-sender assistant">solrouter</span>
                   <span className="msg-time">now</span>
                 </div>
                 <div className="workflow-steps">
@@ -521,9 +503,7 @@ export function ChatView() {
                     <div key={`${ws.step}-${i}`} className={`wf-step ${ws.status}`}>
                       <span className="wf-step-icon">{stepIcon(ws.status)}</span>
                       <span className="wf-step-label">{ws.step}</span>
-                      {ws.detail && (
-                        <span className="wf-step-detail">{ws.detail}</span>
-                      )}
+                      {ws.detail && <span className="wf-step-detail">{ws.detail}</span>}
                     </div>
                   ))}
                 </div>
@@ -538,7 +518,7 @@ export function ChatView() {
                 <div className="workflow-steps">
                   <div className="wf-step running">
                     <span className="wf-step-icon">{stepIcon("running")}</span>
-                    <span className="wf-step-label">Connecting to pipeline...</span>
+                    <span className="wf-step-label">Encrypting intent via SolRouter...</span>
                   </div>
                 </div>
               </div>
@@ -549,7 +529,7 @@ export function ChatView() {
         </div>
       </div>
 
-      {/* Input bar */}
+      {/* Input */}
       <div className="input-bar">
         <div className="input-bar-inner">
           <form className="input-row" onSubmit={handleSubmit}>
@@ -558,7 +538,7 @@ export function ChatView() {
                 ref={inputRef}
                 className="input-field"
                 placeholder={phase === "idle"
-                  ? "Enter a token name or mint address..."
+                  ? "Describe your intent... (token, question, or strategy)"
                   : "Select an option above..."
                 }
                 value={inputValue}
@@ -573,10 +553,11 @@ export function ChatView() {
                     type="button"
                     className={`settings-trigger ${showSettings ? "open" : ""}`}
                     onClick={() => setShowSettings(!showSettings)}
-                    title="Model & settings"
+                    title="SolRouter model"
                   >
+                    <span className="settings-lock">{"\uD83D\uDD12"}</span>
                     <span className="settings-model-name">
-                      {SOLROUTER_MODELS.find((m) => m.value === model)?.label ?? model}
+                      {currentModel?.label ?? model}
                     </span>
                     <span className="settings-chevron">{showSettings ? "\u25B4" : "\u25BE"}</span>
                   </button>
@@ -585,6 +566,7 @@ export function ChatView() {
                     <div className="settings-dropdown">
                       <div className="settings-section">
                         <div className="settings-label">SolRouter Model</div>
+                        <div className="settings-hint">All models use encrypted inference</div>
                         {SOLROUTER_MODELS.map((m) => (
                           <button
                             key={m.value}
@@ -592,8 +574,11 @@ export function ChatView() {
                             className={`settings-option ${model === m.value ? "active" : ""}`}
                             onClick={() => { setModel(m.value); setShowSettings(false); }}
                           >
-                            {m.label}
-                            {model === m.value && <span className="settings-check">{"\u2713"}</span>}
+                            <span>{m.label}</span>
+                            <span className="settings-option-meta">
+                              {m.cost}
+                              {model === m.value && <span className="settings-check">{" \u2713"}</span>}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -605,7 +590,7 @@ export function ChatView() {
                   type="submit"
                   className="send-btn"
                   disabled={!inputValue.trim() || isLoading || phase !== "idle"}
-                  title="Investigate"
+                  title="Send to SolRouter"
                 >
                   &rarr;
                 </button>
@@ -614,7 +599,7 @@ export function ChatView() {
           </form>
 
           <div className="input-footer">
-            Your intent stays private &middot; Solana Devnet &middot; No wallet signing
+            Encrypted via SolRouter &middot; Arcium RescueCipher &middot; TEE Processing &middot; No plaintext logging
           </div>
         </div>
       </div>
