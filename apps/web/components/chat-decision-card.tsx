@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { WorkflowResponse } from "@intentvault/schemas";
 
 function fmtCurrency(val: number | null): string {
-  if (val === null || val === undefined) return "Unknown";
+  if (val === null || val === undefined) return "—";
   if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(2)}M`;
   if (val >= 1_000) return `$${(val / 1_000).toFixed(1)}K`;
   if (val >= 1) return `$${val.toFixed(2)}`;
@@ -12,176 +12,154 @@ function fmtCurrency(val: number | null): string {
 }
 
 function fmtPct(val: number | null): string {
-  if (val === null || val === undefined) return "Unknown";
+  if (val === null || val === undefined) return "—";
   return `${val > 0 ? "+" : ""}${val.toFixed(1)}%`;
 }
 
-function pctClass(val: number | null): string {
-  if (val === null) return "unknown";
-  return val >= 0 ? "positive" : "negative";
+function valClass(val: number | null): string {
+  if (val === null) return "na";
+  return val >= 0 ? "up" : "down";
 }
 
 export function ChatDecisionCard({ response }: { response: WorkflowResponse }) {
   const { decision, evidence, runtime } = response;
   const [activeStrategy, setActiveStrategy] = useState<"safe" | "balanced" | "aggressive">("balanced");
-
   const strategies = ["safe", "balanced", "aggressive"] as const;
-  const currentStrategy = decision.strategyOptions[activeStrategy];
+  const strat = decision.strategyOptions[activeStrategy];
 
   return (
-    <div className="decision-card-wrapper">
-      {/* Header */}
-      <div className="dc-header">
-        <div className="dc-header-left">
+    <div className="dc-wrapper">
+      <div className="dc-head">
+        <div className="dc-head-left">
           <h3>Decision Card</h3>
-          <div className={`risk-chip risk-${decision.overallRisk}`}>
-            {decision.overallRisk} risk
-          </div>
+          <span className={`risk-tag ${decision.overallRisk}`}>
+            {decision.overallRisk}
+          </span>
         </div>
         <div className="dc-score">
           {decision.score}<span>/100</span>
         </div>
       </div>
 
-      <div className="dc-body">
-        {/* Token info */}
-        <div>
-          <div className="dc-token-info">
-            <span className="dc-token-name">{evidence.token.name ?? "Unknown Token"}</span>
-            {evidence.token.symbol && (
-              <span className="dc-token-symbol">{evidence.token.symbol}</span>
-            )}
-          </div>
-          <div className="dc-token-mint">{evidence.token.mint}</div>
+      <div className="dc-content">
+        {/* Token */}
+        <div className="dc-token">
+          <span className="dc-token-name">{evidence.token.name ?? "Unknown"}</span>
+          {evidence.token.symbol && (
+            <span className="dc-token-sym">${evidence.token.symbol}</span>
+          )}
+          <span className="dc-token-mint">{evidence.token.mint}</span>
         </div>
 
-        {/* Market metrics */}
-        <div>
-          <div className="dc-section-title">Market Data</div>
-          <div className="dc-metrics-grid">
+        {/* Market */}
+        <div className="dc-section">
+          <div className="dc-section-label">// market data</div>
+          <div className="dc-metrics">
             <div className="dc-metric">
-              <div className="dc-metric-label">Price</div>
-              <div className="dc-metric-value">{fmtCurrency(evidence.market.priceUsd)}</div>
+              <div className="dc-metric-lbl">Price</div>
+              <div className="dc-metric-val">{fmtCurrency(evidence.market.priceUsd)}</div>
             </div>
             <div className="dc-metric">
-              <div className="dc-metric-label">Liquidity</div>
-              <div className="dc-metric-value">{fmtCurrency(evidence.market.liquidityUsd)}</div>
+              <div className="dc-metric-lbl">Liquidity</div>
+              <div className="dc-metric-val">{fmtCurrency(evidence.market.liquidityUsd)}</div>
             </div>
             <div className="dc-metric">
-              <div className="dc-metric-label">Market Cap</div>
-              <div className="dc-metric-value">{fmtCurrency(evidence.market.marketCapUsd)}</div>
+              <div className="dc-metric-lbl">MCap</div>
+              <div className="dc-metric-val">{fmtCurrency(evidence.market.marketCapUsd)}</div>
             </div>
             <div className="dc-metric">
-              <div className="dc-metric-label">24h Volume</div>
-              <div className="dc-metric-value">{fmtCurrency(evidence.market.volume24hUsd)}</div>
+              <div className="dc-metric-lbl">24h Vol</div>
+              <div className="dc-metric-val">{fmtCurrency(evidence.market.volume24hUsd)}</div>
             </div>
             <div className="dc-metric">
-              <div className="dc-metric-label">24h Change</div>
-              <div className={`dc-metric-value ${pctClass(evidence.market.priceChange24hPct)}`}>
+              <div className="dc-metric-lbl">24h Chg</div>
+              <div className={`dc-metric-val ${valClass(evidence.market.priceChange24hPct)}`}>
                 {fmtPct(evidence.market.priceChange24hPct)}
               </div>
             </div>
-            {evidence.market.fdvUsd !== null && evidence.market.fdvUsd !== undefined && (
+            {evidence.market.fdvUsd != null && (
               <div className="dc-metric">
-                <div className="dc-metric-label">FDV</div>
-                <div className="dc-metric-value">{fmtCurrency(evidence.market.fdvUsd)}</div>
+                <div className="dc-metric-lbl">FDV</div>
+                <div className="dc-metric-val">{fmtCurrency(evidence.market.fdvUsd)}</div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Risk factors */}
-        <div>
-          <div className="dc-section-title">Risk Factors</div>
+        {/* Risk Factors */}
+        <div className="dc-section">
+          <div className="dc-section-label">// risk factors</div>
           <div className="dc-risks">
-            {decision.topRisks.map((risk, i) => (
-              <div className="dc-risk-item" key={`${risk.label}-${i}`}>
-                <div className={`dc-risk-severity ${risk.severity}`} />
-                <div className="dc-risk-content">
-                  <div className="dc-risk-label">{risk.label}</div>
-                  <div className="dc-risk-evidence">{risk.evidence}</div>
+            {decision.topRisks.map((r, i) => (
+              <div className="dc-risk" key={`${r.label}-${i}`}>
+                <div className={`dc-risk-dot ${r.severity}`} />
+                <div className="dc-risk-text">
+                  <div className="dc-risk-name">{r.label}</div>
+                  <div className="dc-risk-ev">{r.evidence}</div>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Verify next */}
-        <div>
-          <div className="dc-section-title">What to Verify Next</div>
-          <ul className="dc-verify-list">
-            {decision.whatToVerifyNext.map((step, i) => (
-              <li key={i}>{step}</li>
+        {/* Verify */}
+        <div className="dc-section">
+          <div className="dc-section-label">// verify next</div>
+          <ul className="dc-verify">
+            {decision.whatToVerifyNext.map((s, i) => (
+              <li key={i}>{s}</li>
             ))}
           </ul>
         </div>
 
-        {/* Strategy options with tabs */}
-        <div>
-          <div className="dc-section-title">Strategy Options</div>
-          <div className="dc-strategy-tabs">
+        {/* Strategy */}
+        <div className="dc-section">
+          <div className="dc-section-label">// strategy</div>
+          <div className="dc-strat-tabs">
             {strategies.map((s) => (
               <button
                 key={s}
-                className={`dc-strategy-tab ${activeStrategy === s ? "active" : ""}`}
+                className={`dc-strat-tab ${activeStrategy === s ? "active" : ""}`}
                 onClick={() => setActiveStrategy(s)}
               >
                 {s}
               </button>
             ))}
           </div>
-          <div className="dc-strategy-content">
-            <p>{currentStrategy.summary}</p>
-            <strong>Entry</strong>
-            <p>{currentStrategy.entryPlan}</p>
-            <strong>Exit</strong>
-            <p>{currentStrategy.exitPlan}</p>
-            <strong>Position sizing</strong>
-            <p>{currentStrategy.positionSizingHint}</p>
+          <div className="dc-strat-body">
+            <p>{strat.summary}</p>
+            <strong>entry</strong>
+            <p>{strat.entryPlan}</p>
+            <strong>exit</strong>
+            <p>{strat.exitPlan}</p>
+            <strong>sizing</strong>
+            <p>{strat.positionSizingHint}</p>
           </div>
         </div>
       </div>
 
-      {/* Discovery info */}
+      {/* Discovery */}
       {evidence.discovery && (
-        <div className="dc-footer">
-          {evidence.discovery.dexId && (
-            <div className="dc-footer-item">
-              <span>DEX:</span> <span>{evidence.discovery.dexId}</span>
-            </div>
-          )}
+        <div className="dc-foot">
+          {evidence.discovery.dexId && <span>dex: {evidence.discovery.dexId}</span>}
           {evidence.discovery.pairUrl && (
-            <div className="dc-footer-item">
-              <span>
-                <a href={evidence.discovery.pairUrl} target="_blank" rel="noopener noreferrer">
-                  View on DexScreener
-                </a>
-              </span>
-            </div>
+            <a href={evidence.discovery.pairUrl} target="_blank" rel="noopener noreferrer">
+              view on dexscreener
+            </a>
           )}
           {evidence.discovery.createdAt && (
-            <div className="dc-footer-item">
-              <span>Pair created:</span>
-              <span>{new Date(evidence.discovery.createdAt).toLocaleDateString()}</span>
-            </div>
+            <span>pair: {new Date(evidence.discovery.createdAt).toLocaleDateString()}</span>
           )}
         </div>
       )}
 
-      {/* Runtime trace */}
-      <div className="dc-footer">
-        <div className="dc-footer-item">
-          <span>Signals:</span> <span>{runtime.signalsProvider}</span>
-        </div>
-        <div className="dc-footer-item">
-          <span>Inference:</span> <span>{runtime.inferenceProvider}</span>
-        </div>
-        <div className="dc-footer-item">
-          <span>ID:</span> <span>{response.requestId.slice(0, 12)}...</span>
-        </div>
+      {/* Trace */}
+      <div className="dc-foot">
+        <span>signals: {runtime.signalsProvider}</span>
+        <span>inference: {runtime.inferenceProvider}</span>
+        <span>id: {response.requestId.slice(0, 12)}</span>
       </div>
 
-      {/* Disclaimer */}
       <div className="dc-disclaimer">{decision.disclaimer}</div>
     </div>
   );
