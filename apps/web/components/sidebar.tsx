@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSessions, useActiveSessionId } from "@/lib/use-session-store";
 import { createSession, setActiveSession } from "@/lib/session-store";
 
@@ -21,6 +22,7 @@ interface SidebarProps {
 export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
+  const [walletHover, setWalletHover] = useState(false);
 
   return (
     <aside className="sidebar">
@@ -36,6 +38,21 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
         >
           {theme === "dark" ? "\u2600" : "\u263E"}
         </button>
+      </div>
+
+      {/* Wallet connect preview */}
+      <div
+        className="wallet-preview"
+        onMouseEnter={() => setWalletHover(true)}
+        onMouseLeave={() => setWalletHover(false)}
+      >
+        <button className="wallet-btn" disabled>
+          <span className="wallet-icon">{"\uD83D\uDCBB"}</span>
+          <span className="wallet-text">
+            {walletHover ? "Coming soon" : "Connect Wallet"}
+          </span>
+        </button>
+        <span className="wallet-hint">Read-only &middot; No signing</span>
       </div>
 
       <button className="new-chat-btn" onClick={() => createSession()}>
@@ -64,8 +81,8 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
           <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
             SolRouter
           </a>
-          {" "}&middot; Solana Devnet
         </span>
+        <span>Encrypted Inference &middot; Arcium TEE</span>
       </div>
     </aside>
   );
