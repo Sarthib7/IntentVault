@@ -16,8 +16,8 @@
   --transition: 0.15s ease;
 }
 
-/* Dark theme (default) */
-[data-theme="dark"], :root {
+/* Dark theme */
+[data-theme="dark"] {
   --bg-primary: #0a0e14;
   --bg-secondary: #0f1319;
   --bg-tertiary: #141920;
@@ -44,8 +44,8 @@
   --glow: 0 0 20px rgba(0, 255, 136, 0.06);
 }
 
-/* Light theme */
-[data-theme="light"] {
+/* Light theme (default) */
+[data-theme="light"], :root {
   --bg-primary: #f8f9fb;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f0f2f5;
@@ -955,6 +955,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--border);
 }
 
+.feature-icon {
+  font-size: 16px;
+}
+
 .feature-name {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1120,7 +1124,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-tertiary);
-  padding: 4px 12px 6px;
+  padding: 4px 12px 2px;
+}
+
+.settings-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--accent);
+  padding: 0 12px 6px;
+  opacity: 0.7;
+}
+
+.settings-lock {
+  font-size: 10px;
 }
 
 .settings-option {
@@ -1145,6 +1161,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .settings-option.active {
+  color: var(--accent);
+}
+
+.settings-option-meta {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.settings-option.active .settings-option-meta {
   color: var(--accent);
 }
 
