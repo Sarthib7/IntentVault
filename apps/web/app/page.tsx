@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/sidebar";
 import { ChatView } from "@/components/chat-view";
 
 export default function HomePage() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
 
   // Apply theme to <html> element
   useEffect(() => {
