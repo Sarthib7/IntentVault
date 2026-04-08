@@ -80,39 +80,21 @@ type MessageBlock =
 const CAPABILITIES: Capability[] = [
   {
     icon: "\uD83D\uDD12",
-    title: "Encrypted Inference",
-    description: "Your intent is encrypted client-side via Arcium RescueCipher. SolRouter never sees plaintext.",
+    title: "Private by default",
+    description: "Intent stays in the encrypted inference path instead of becoming UI noise or public prompt context.",
     badge: "live"
   },
   {
     icon: "\uD83D\uDD0D",
-    title: "Research Agent",
-    description: "Multi-phase deep research with holder analysis, authority audit, and liquidity depth.",
+    title: "Research without routing mistakes",
+    description: "Normal questions stay chat. Deep research stays topic research. Token workflows start only after confirmation.",
     badge: "live"
   },
   {
     icon: "\uD83C\uDFAF",
-    title: "Intent Signals",
-    description: "Understand what your query reveals publicly vs. what stays inside the privacy boundary.",
-    badge: "soon"
-  },
-  {
-    icon: "\uD83E\uDDE0",
-    title: "Strategy Synthesis",
-    description: "Personalized risk-adjusted strategies generated through private inference.",
+    title: "Token flows when you ask",
+    description: "If you ask about BONK, BTC, or SOL, the system confirms the asset before moving into structured investigation.",
     badge: "live"
-  },
-  {
-    icon: "\u26D3\uFE0F",
-    title: "On-Chain Attestation",
-    description: "Verify privacy guarantees with SolRouter attestation IDs on Solana.",
-    badge: "soon"
-  },
-  {
-    icon: "\uD83D\uDCCA",
-    title: "Portfolio Risk Scan",
-    description: "Scan wallet holdings for risk exposure without revealing your strategy.",
-    badge: "planned"
   }
 ];
 
@@ -652,20 +634,14 @@ export function ChatView() {
         <div className="chat-header-left chat-header-copy">
           <div className="chat-title-block">
             <span className="chat-kicker">encrypted conversation</span>
-            <h2>{phase === "idle" ? "Ask clearly. Route only when needed." : "Guided investigation in progress."}</h2>
+            <h2>{phase === "idle" ? "What do you want to know?" : "Guided investigation in progress."}</h2>
           </div>
-          <p className="chat-subline">
-            Casual prompts stay chat. Topic research stays general. Token analysis begins only after you confirm the asset.
-          </p>
         </div>
         <div className="chat-header-right">
-          <span className="provider-tag active" title="End-to-end encrypted inference">
-            SolRouter Encrypted
-          </span>
-          <span className="provider-tag">{currentModel?.label ?? model}</span>
           <span className="chat-mode-tag">
             {phase === "idle" ? "chat mode" : "analysis flow"}
           </span>
+          <span className="provider-tag">{currentModel?.label ?? model}</span>
         </div>
       </div>
 
@@ -674,14 +650,13 @@ export function ChatView() {
           {messages.length === 0 && !isLoading && phase === "idle" ? (
             <div className="welcome-screen">
               <div className="welcome-panel">
-                <span className="welcome-kicker">private operator shell</span>
+                <span className="welcome-kicker">clean private research</span>
                 <div className="welcome-brand">
-                  Ask better. <span>Keep intent private.</span>
+                  Minimal chat. <span>Precise routing.</span>
                 </div>
                 <p className="welcome-desc">
-                  IntentVault is a calmer encrypted chat surface for questions,
-                  research, and token workflows. It should feel closer to a sharp
-                  messaging product than a full-screen dashboard.
+                  Ask a normal question, request deep research on any topic, or ask about a token.
+                  The interface should stay quiet until you need structured analysis.
                 </p>
                 <div className="welcome-actions">
                   {STARTER_PROMPTS.map((prompt) => (

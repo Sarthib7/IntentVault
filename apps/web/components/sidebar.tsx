@@ -24,50 +24,33 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-header-row">
-          <div className="sidebar-brand">
-            <div className="brand-mark">
-              <span className="brand-cursor" />
-            </div>
-            <div className="sidebar-brand-copy">
-              <span className="sidebar-kicker">private workflow layer</span>
-              <h1>INTENTVAULT</h1>
-            </div>
+      <div className="sidebar-topbar">
+        <div className="sidebar-brand">
+          <div className="brand-mark">
+            <span className="brand-cursor" />
           </div>
-          <button
-            className="theme-toggle"
-            onClick={onToggleTheme}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          >
-            {theme === "dark" ? "\u2600" : "\u263E"}
-          </button>
+          <div className="sidebar-brand-copy">
+            <span className="sidebar-kicker">private workflow layer</span>
+            <h1>INTENTVAULT</h1>
+          </div>
         </div>
-
-        <p className="sidebar-summary">
-          Encrypted chat for topic research, token investigation, and signal-heavy questions without turning the interface into a dashboard.
-        </p>
+        <button
+          className="theme-toggle"
+          onClick={onToggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        >
+          {theme === "dark" ? "\u2600" : "\u263E"}
+        </button>
       </div>
 
-      <div className="sidebar-section">
-        <div className="sidebar-section-head">
-          <span className="sidebar-intro-label">workspace</span>
-        </div>
-
+      <div className="sidebar-controls">
         <button className="new-chat-btn" onClick={() => createSession()}>
           <span className="new-chat-btn-mark">+</span>
           <span>new thread</span>
         </button>
-
-        <div className="sidebar-meta-grid">
-          <div className="sidebar-meta-card">
-            <span className="sidebar-meta-label">inference</span>
-            <strong>SolRouter encrypted</strong>
-          </div>
-          <div className="sidebar-meta-card">
-            <span className="sidebar-meta-label">wallet</span>
-            <strong>read-only for now</strong>
-          </div>
+        <div className="sidebar-status-row">
+          <span className="sidebar-status-pill">SolRouter encrypted</span>
+          <span className="sidebar-status-pill muted">No signing</span>
         </div>
       </div>
 
