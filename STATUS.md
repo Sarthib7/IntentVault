@@ -25,6 +25,7 @@ Working MVP with:
 ### Backend
 - **DexScreener live provider** — Real-time Solana token data, keyword search, risk scoring
 - **SolRouter adapter** — Encrypted inference via `@solrouter/sdk` with Arcium RescueCipher
+- **Inference health** — `GET /api/health/inference` reports solrouter vs mock (no secrets); Next loads root `.env.local` for `SOLROUTER_API_KEY`
 - **SSE streaming** — Both `/api/workflow/investigate-token` and `/api/workflow/deep-research`
 - **Deep research pipeline** — 3 phases: market scan, holder/authority/LP analysis, strategy synthesis
 - **Mock fallback** — Deterministic fake data when APIs are unreachable
