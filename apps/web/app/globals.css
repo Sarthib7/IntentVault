@@ -44,8 +44,8 @@
   --glow: 0 0 20px rgba(0, 255, 136, 0.06);
 }
 
-/* Light theme (default) */
-[data-theme="light"], :root {
+/* Light theme (html keeps data-theme="light" in layout for first paint) */
+[data-theme="light"] {
   --bg-primary: #f8f9fb;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f0f2f5;
