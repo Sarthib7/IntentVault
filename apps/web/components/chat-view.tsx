@@ -5,6 +5,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  type ReactNode,
   type FormEvent,
   type KeyboardEvent
 } from "react";
@@ -62,6 +63,12 @@ interface Capability {
   description: string;
   badge: "live" | "soon" | "planned";
 }
+
+type MessageBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "unordered-list"; items: string[] }
+  | { type: "ordered-list"; items: string[] }
+  | { type: "table"; header: string[]; rows: string[][] };
 
 const CAPABILITIES: Capability[] = [
   {
@@ -136,6 +143,132 @@ function stepIcon(status: string): string {
   }
 }
 
+function renderInlineContent(text: string): ReactNode[] {
+  return text.split(/\*\*(.*?)\*\*/g).map((part, index) =>
+    index % 2 === 1 ? <strong key={index}>{part}</strong> : <span key={index}>{part}</span>
+  );
+}
+
+function isTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|", 1);
+}
+
+function splitTableCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  const cells = splitTableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function parseMessageBlocks(content: string): MessageBlock[] {
+  const lines = content.split("\n");
+  const blocks: MessageBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const currentLine = lines[index]?.trim() ?? "";
+
+    if (!currentLine) {
+      index += 1;
+      continue;
+    }
+
+    const nextLine = lines[index + 1]?.trim() ?? "";
+    if (isTableLine(currentLine) && nextLine && isTableSeparatorLine(nextLine)) {
+      const header = splitTableCells(currentLine);
+      const rows: string[][] = [];
+      index += 2;
+
+      while (index < lines.length) {
+        const rowLine = lines[index]?.trim() ?? "";
+        if (!isTableLine(rowLine)) {
+          break;
+        }
+
+        rows.push(splitTableCells(rowLine));
+        index += 1;
+      }
+
+      blocks.push({ type: "table", header, rows });
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(currentLine)) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const listLine = lines[index]?.trim() ?? "";
+        if (!/^[-*]\s+/.test(listLine)) {
+          break;
+        }
+
+        items.push(listLine.replace(/^[-*]\s+/, "").trim());
+        index += 1;
+      }
+
+      blocks.push({ type: "unordered-list", items });
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(currentLine)) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const listLine = lines[index]?.trim() ?? "";
+        if (!/^\d+\.\s+/.test(listLine)) {
+          break;
+        }
+
+        items.push(listLine.replace(/^\d+\.\s+/, "").trim());
+        index += 1;
+      }
+
+      blocks.push({ type: "ordered-list", items });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const paragraphLine = lines[index]?.trim() ?? "";
+      const paragraphNextLine = lines[index + 1]?.trim() ?? "";
+
+      if (!paragraphLine) {
+        break;
+      }
+
+      if (/^[-*]\s+/.test(paragraphLine) || /^\d+\.\s+/.test(paragraphLine)) {
+        break;
+      }
+
+      if (isTableLine(paragraphLine) && paragraphNextLine && isTableSeparatorLine(paragraphNextLine)) {
+        break;
+      }
+
+      paragraphLines.push(paragraphLine);
+      index += 1;
+    }
+
+    if (paragraphLines.length > 0) {
+      blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
+      continue;
+    }
+
+    index += 1;
+  }
+
+  if (blocks.length === 0) {
+    return [{ type: "paragraph", text: content.trim() }];
+  }
+
+  return blocks;
+}
+
 /* ------------------------------------------------------------------ */
 /* SSE Parser                                                          */
 /* ------------------------------------------------------------------ */
@@ -200,19 +333,37 @@ export function ChatView() {
   // Streaming
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   const messages = session?.messages ?? [];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "smooth"
+    });
   }, [messages.length, isLoading, workflowSteps.length, phase]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [session?.id, phase]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.style.height = "0px";
+    input.style.height = `${input.scrollHeight}px`;
+  }, [inputValue, phase]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -505,7 +656,7 @@ export function ChatView() {
         </div>
       </div>
 
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         <div className="messages-inner">
           {messages.length === 0 && !isLoading && phase === "idle" ? (
             <div className="welcome-screen">
@@ -551,17 +702,60 @@ export function ChatView() {
                       <span className="msg-time">{formatTime(msg.timestamp)}</span>
                     </div>
                     <div className="msg-text">
-                      {msg.content.split("\n").map((line, i) => (
-                        <p key={i}>
-                          {line.split(/\*\*(.*?)\*\*/g).map((part, j) =>
-                            j % 2 === 1 ? (
-                              <strong key={j}>{part}</strong>
-                            ) : (
-                              <span key={j}>{part}</span>
-                            )
-                          )}
-                        </p>
-                      ))}
+                      {parseMessageBlocks(msg.content).map((block, index) => {
+                        if (block.type === "paragraph") {
+                          return (
+                            <p key={index} className="msg-paragraph">
+                              {renderInlineContent(block.text)}
+                            </p>
+                          );
+                        }
+
+                        if (block.type === "unordered-list") {
+                          return (
+                            <ul key={index} className="msg-list">
+                              {block.items.map((item, itemIndex) => (
+                                <li key={itemIndex}>{renderInlineContent(item)}</li>
+                              ))}
+                            </ul>
+                          );
+                        }
+
+                        if (block.type === "ordered-list") {
+                          return (
+                            <ol key={index} className="msg-list ordered">
+                              {block.items.map((item, itemIndex) => (
+                                <li key={itemIndex}>{renderInlineContent(item)}</li>
+                              ))}
+                            </ol>
+                          );
+                        }
+
+                        return (
+                          <div key={index} className="msg-table-wrap">
+                            <table className="msg-table">
+                              <thead>
+                                <tr>
+                                  {block.header.map((cell, cellIndex) => (
+                                    <th key={cellIndex}>{renderInlineContent(cell)}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {block.rows.map((row, rowIndex) => (
+                                  <tr key={rowIndex}>
+                                    {block.header.map((_, cellIndex) => (
+                                      <td key={cellIndex}>
+                                        {renderInlineContent(row[cellIndex] ?? "")}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })}
                     </div>
                     {msg.workflowResponse && (
                       <ChatDecisionCard response={msg.workflowResponse} />
@@ -618,8 +812,6 @@ export function ChatView() {
               </div>
             </div>
           )}
-
-          <div ref={messagesEndRef} />
         </div>
       </div>
 

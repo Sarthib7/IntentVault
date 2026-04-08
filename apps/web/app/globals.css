@@ -3,9 +3,9 @@
 :root {
   --font-sans: "Space Grotesk", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
-  --radius-lg: 8px;
-  --radius-md: 6px;
-  --radius-sm: 4px;
+  --radius-lg: 6px;
+  --radius-md: 4px;
+  --radius-sm: 3px;
   --radius-xs: 2px;
   --transition-fast: 140ms ease;
   --transition-slow: 220ms ease;
@@ -79,6 +79,7 @@
 
 html,
 body {
+  height: 100%;
   min-height: 100%;
   background: var(--bg-primary);
   color: var(--text);
@@ -91,8 +92,7 @@ body {
 
 body {
   position: relative;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 body::before {
@@ -134,17 +134,23 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 14px;
+  width: min(100%, 1320px);
+  height: 100dvh;
   min-height: 100dvh;
-  padding: 12px;
+  max-height: 100dvh;
+  margin: 0 auto;
+  padding: 14px;
   background: var(--shell-bg);
   align-items: stretch;
+  overflow: hidden;
 }
 
 .sidebar,
 .chat-area {
   position: relative;
+  height: 100%;
   min-height: 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -170,7 +176,6 @@ select {
   flex-direction: column;
   min-width: 0;
   backdrop-filter: blur(16px);
-  min-height: calc(100dvh - 24px);
 }
 
 .sidebar-header {
@@ -178,7 +183,7 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  padding: 18px 18px 14px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -255,8 +260,8 @@ select {
 }
 
 .sidebar-intro {
-  margin: 14px 18px 0;
-  padding: 14px 14px 15px;
+  margin: 12px 16px 0;
+  padding: 12px 12px 13px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background:
@@ -285,7 +290,7 @@ select {
 }
 
 .wallet-preview {
-  margin: 14px 18px 0;
+  margin: 12px 16px 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -336,7 +341,7 @@ select {
 }
 
 .new-chat-btn {
-  margin: 14px 18px 0;
+  margin: 12px 16px 0;
   cursor: pointer;
   color: var(--text);
   background:
@@ -350,17 +355,19 @@ select {
 }
 
 .session-list-label {
-  margin: 16px 18px 10px;
+  margin: 14px 16px 10px;
 }
 
 .session-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 12px 14px 18px;
+  padding: 0 10px 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-accent) transparent;
 }
 
 .session-item {
@@ -412,7 +419,7 @@ select {
 }
 
 .sidebar-footer {
-  padding: 15px 18px 18px;
+  padding: 14px 16px 16px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -433,7 +440,7 @@ select {
   min-height: 0;
   backdrop-filter: blur(16px);
   min-width: 0;
-  min-height: calc(100dvh - 24px);
+  overflow: hidden;
 }
 
 .chat-header {
@@ -441,7 +448,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 140%);
@@ -461,9 +468,9 @@ select {
 }
 
 .chat-header h2 {
-  font-size: 26px;
+  font-size: 22px;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
 
 .provider-tags,
@@ -506,30 +513,45 @@ select {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 18px 0 20px;
+  padding: 14px 0 12px;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-accent) transparent;
+}
+
+.session-list::-webkit-scrollbar,
+.messages-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.session-list::-webkit-scrollbar-thumb,
+.messages-container::-webkit-scrollbar-thumb {
+  background: var(--bg-soft-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 
 .messages-inner {
-  width: min(100%, 980px);
+  width: min(100%, 760px);
   margin: 0 auto;
   padding: 0 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .welcome-screen {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  min-height: calc(100vh - 260px);
+  gap: 18px;
+  min-height: min(100%, calc(100dvh - 252px));
   justify-content: center;
-  padding: 24px 0;
+  padding: 10px 0 18px;
 }
 
 .welcome-panel {
   position: relative;
-  padding: 24px;
+  padding: 20px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background:
@@ -553,7 +575,7 @@ select {
 
 .welcome-brand {
   margin-top: 10px;
-  font-size: clamp(42px, 7vw, 74px);
+  font-size: clamp(34px, 5vw, 56px);
   line-height: 0.92;
   letter-spacing: -0.08em;
   font-weight: 700;
@@ -564,11 +586,11 @@ select {
 }
 
 .welcome-desc {
-  margin-top: 18px;
-  max-width: 720px;
-  font-size: 15px;
+  margin-top: 14px;
+  max-width: 620px;
+  font-size: 14px;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
 .welcome-hint {
@@ -584,16 +606,16 @@ select {
 
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
 
 .feature-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 152px;
-  padding: 14px;
+  gap: 10px;
+  min-height: 138px;
+  padding: 13px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background:
@@ -673,14 +695,14 @@ select {
 
 .message {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
   animation: message-in 180ms ease;
 }
 
 .message.user {
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 32px;
 }
 
 .message.user .msg-indicator {
@@ -694,8 +716,8 @@ select {
 .msg-indicator {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-soft);
@@ -720,7 +742,7 @@ select {
 
 .msg-body {
   min-width: 0;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-secondary);
@@ -744,7 +766,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .msg-sender {
@@ -769,13 +791,64 @@ select {
 }
 
 .msg-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.72;
+  font-size: 13px;
+  line-height: 1.68;
 }
 
-.msg-text p + p {
+.msg-paragraph {
+  margin: 0;
+}
+
+.msg-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.msg-list li + li {
   margin-top: 6px;
+}
+
+.msg-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.msg-table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  background: var(--bg-tertiary);
+}
+
+.msg-table th,
+.msg-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.msg-table th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: var(--bg-soft);
+}
+
+.msg-table td {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.msg-table tr:last-child td {
+  border-bottom: none;
 }
 
 .workflow-steps {
@@ -850,7 +923,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding-left: 48px;
+  padding-left: 42px;
 }
 
 .mcq-btn {
@@ -1176,14 +1249,14 @@ select {
 }
 
 .input-bar {
-  padding: 14px 18px 18px;
+  padding: 12px 16px 14px;
   border-top: 1px solid var(--border);
   background:
     linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.06));
 }
 
 .input-bar-inner {
-  width: min(100%, 980px);
+  width: min(100%, 760px);
   margin: 0 auto;
 }
 
@@ -1215,12 +1288,13 @@ select {
 
 .input-field {
   width: 100%;
-  min-height: 64px;
-  max-height: 150px;
-  padding: 14px 14px 8px;
+  min-height: 24px;
+  max-height: none;
+  padding: 14px 14px 6px;
   border: none;
   background: transparent;
   resize: none;
+  overflow-y: hidden;
   color: var(--text);
   font-size: 15px;
   line-height: 1.65;
@@ -1239,7 +1313,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 12px 14px 18px;
+  padding: 0 12px 12px 14px;
 }
 
 .settings-wrapper {
@@ -1371,7 +1445,7 @@ select {
 }
 
 .input-footer {
-  margin-top: 10px;
+  margin-top: 8px;
   text-align: center;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1405,19 +1479,20 @@ select {
 
 @media (max-width: 1080px) {
   .app-layout {
-    grid-template-columns: 252px minmax(0, 1fr);
+    grid-template-columns: 224px minmax(0, 1fr);
+    width: 100%;
     gap: 10px;
     padding: 10px;
   }
 
   .chat-header {
-    padding: 16px 18px;
+    padding: 14px 16px;
   }
 
   .messages-inner,
   .input-bar-inner {
-    width: 100%;
-    padding: 0 18px;
+    width: min(100%, 720px);
+    padding: 0 16px;
   }
 }
 
@@ -1429,10 +1504,14 @@ select {
   .app-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
+    height: auto;
     min-height: 100dvh;
+    max-height: none;
   }
 
-  .sidebar {
+  .sidebar,
+  .chat-area {
+    height: auto;
     min-height: auto;
   }
 
@@ -1449,6 +1528,11 @@ select {
 
   .chat-area {
     min-height: 0;
+  }
+
+  .messages-container {
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 
   .welcome-screen {
@@ -1530,7 +1614,7 @@ select {
   }
 
   .input-field {
-    min-height: 72px;
+    min-height: 24px;
     font-size: 14px;
   }
 
