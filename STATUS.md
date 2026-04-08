@@ -1,6 +1,6 @@
 # IntentVault Status
 
-Last updated: 2026-04-06 (Session 3)
+Last updated: 2026-04-08 (Session 4)
 
 ## Product Direction (Updated)
 
@@ -182,6 +182,10 @@ npm run typecheck    # All workspaces
 npm run test         # Vitest
 npm run build        # Production
 ```
+
+`@intentvault/web` declares `@types/react`, `@types/react-dom`, and `typescript` as devDependencies so Next.js TypeScript checks have local typings.
+
+**Vercel:** Set the project **Root Directory** to `apps/web`. `apps/web/vercel.json` runs `npm ci` and `npm run build --workspace @intentvault/web` from the **repository root** so workspace packages (`@intentvault/schemas`, `@intentvault/workflows`) install and link. In project settings → Root Directory, enable **Include source files outside of the Root Directory** in the Build Step (so `packages/` is visible to the build).
 
 ## Git Identity
 
