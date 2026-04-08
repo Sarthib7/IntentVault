@@ -30,6 +30,10 @@ The repo starts with a small monorepo instead of a single app directory so multi
 - `auto`: SolRouter when `SOLROUTER_API_KEY` exists, otherwise mock
 - `mock`: deterministic local decision-card generation
 
+`apps/web` loads `.env*` from the **monorepo root** first so a single root `.env.local` configures the Next server.
+
+`GET /api/health/inference` returns whether the runtime selected SolRouter or mock (no outbound calls, no secrets).
+
 ## Immediate Follow-Up Work
 
 1. Add a live public-signal provider with caching, timeout, and retry policy.
