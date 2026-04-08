@@ -697,7 +697,7 @@ export function createInferenceProvider(): InferenceProvider {
     return new MockInferenceProvider();
   }
 
-  const apiKey = process.env.SOLROUTER_API_KEY;
+  const apiKey = process.env.SOLROUTER_API_KEY?.trim();
 
   if (!apiKey) {
     return new MockInferenceProvider();
@@ -705,9 +705,40 @@ export function createInferenceProvider(): InferenceProvider {
 
   return new SolRouterInferenceProvider({
     apiKey,
-    baseUrl: process.env.SOLROUTER_BASE_URL || undefined,
+    baseUrl: process.env.SOLROUTER_BASE_URL?.trim() || undefined,
     model: resolveSolRouterModel(process.env.SOLROUTER_MODEL)
   });
+}
+
+export type InferenceRuntimeInfo = {
+  backend: "solrouter" | "mock";
+  providerName: string;
+  model?: string;
+  note?: string;
+};
+
+/** Safe summary for health checks — no secrets. */
+export function getInferenceRuntimeInfo(): InferenceRuntimeInfo {
+  const explicitMock =
+    (process.env.INTENTVAULT_INFERENCE_MODE ?? "auto") === "mock";
+  const hasKey = Boolean(process.env.SOLROUTER_API_KEY?.trim());
+  const provider = createInferenceProvider();
+  const usingSolrouter = provider.name.includes("solrouter");
+  let note: string | undefined;
+  if (!usingSolrouter) {
+    if (explicitMock) note = "INTENTVAULT_INFERENCE_MODE=mock";
+    else if (!hasKey) note = "SOLROUTER_API_KEY missing or empty";
+  }
+  const model =
+    usingSolrouter && "model" in provider
+      ? (provider as { model: string }).model
+      : undefined;
+  return {
+    backend: usingSolrouter ? "solrouter" : "mock",
+    providerName: provider.name,
+    model,
+    note
+  };
 }
 
 /* ------------------------------------------------------------------ */
