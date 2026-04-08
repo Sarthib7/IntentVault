@@ -203,3 +203,4 @@ npm run build        # Production
 - Changed the composer to auto-resize vertically so the input itself does not become a nested scroll region during normal use.
 - Tightened panel spacing, welcome-state scale, and message density to better match current chat-product reading patterns while keeping the boxy cyber shell.
 - Added a lightweight rich-text renderer for assistant messages so lists and Markdown-style tables render cleanly in the chat bubble instead of breaking the layout.
+- Relaxed the shell again after visual review: wider sidebar rail, clearer spacing around the theme toggle and wordmark, and a less cramped transcript/composer rhythm.
