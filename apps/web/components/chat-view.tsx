@@ -12,6 +12,7 @@ import { useActiveSession } from "@/lib/use-session-store";
 import { createSession, addMessage } from "@/lib/session-store";
 import type {
   ChatMessage,
+  GeneralChatResponse,
   InvestigationRequest,
   WorkflowResponse
 } from "@intentvault/schemas";
@@ -29,6 +30,7 @@ interface WorkflowStep {
 
 type ConversationPhase =
   | "idle"
+  | "confirm-token"
   | "ask-risk"
   | "ask-horizon"
   | "ask-depth"
@@ -48,6 +50,13 @@ const SOLROUTER_MODELS = [
   { value: "claude-sonnet-4", label: "Claude Sonnet 4", cost: "$3.00/M" },
   { value: "gpt-4o-mini", label: "GPT-4o Mini", cost: "$0.15/M" }
 ];
+
+const INVESTIGATION_ACTIONS =
+  /\b(investigate|analysis|analyze|scan|check|review|audit)\b/i;
+const TOKEN_MARKET_KEYWORDS =
+  /\b(price|chart|risk|token|mint|liquidity|holder|holders|authority|fdv|pair|rug|volume|market cap)\b/i;
+const GENERAL_RESEARCH_KEYWORDS = /\b(deep research|research|topic|subject)\b/i;
+const CASUAL_MESSAGES = new Set(["hey", "hi", "hello", "sup", "ssup", "yo", "gm"]);
 
 /* ------------------------------------------------------------------ */
 /* Welcome screen content                                              */
@@ -131,6 +140,78 @@ function stepIcon(status: string): string {
     case "error":   return "\u2717";
     default:        return "\u25CB";
   }
+}
+
+function extractTokenQuery(value: string): string | null {
+  const trimmed = value.trim();
+
+  const addressMatch = trimmed.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/);
+  if (addressMatch) {
+    return addressMatch[0];
+  }
+
+  if (/^[A-Z0-9]{2,10}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const symbolMatch = trimmed.match(/\$([A-Za-z][A-Za-z0-9]{1,9})\b/);
+  if (symbolMatch) {
+    return symbolMatch[1];
+  }
+
+  const tickerMatches = trimmed.match(/\b[A-Z][A-Z0-9]{1,9}\b/g);
+  if (tickerMatches) {
+    return tickerMatches[tickerMatches.length - 1];
+  }
+
+  const cleaned = trimmed.replace(/[^\w$ ]+/g, " ").trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const candidate = words.at(-1)?.replace(/^\$/, "");
+
+  if (!candidate) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function classifyInput(value: string):
+  | { mode: "chat" }
+  | { mode: "research" }
+  | { mode: "need-token" }
+  | { mode: "investigation"; tokenQuery: string } {
+  const trimmed = value.trim();
+  const lowered = trimmed.toLowerCase();
+
+  if (!trimmed || CASUAL_MESSAGES.has(lowered)) {
+    return { mode: "chat" };
+  }
+
+  const tokenQuery = extractTokenQuery(trimmed);
+  const hasMarketKeywords = TOKEN_MARKET_KEYWORDS.test(trimmed);
+  const hasInvestigationAction = INVESTIGATION_ACTIONS.test(trimmed);
+
+  if (
+    tokenQuery &&
+    (
+      hasMarketKeywords ||
+      hasInvestigationAction ||
+      /^[A-Z0-9]{2,10}$/.test(trimmed) ||
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)
+    )
+  ) {
+    return { mode: "investigation", tokenQuery };
+  }
+
+  if (hasMarketKeywords || hasInvestigationAction) {
+    return { mode: "need-token" };
+  }
+
+  if (GENERAL_RESEARCH_KEYWORDS.test(trimmed)) {
+    return { mode: "research" };
+  }
+
+  return { mode: "chat" };
 }
 
 /* ------------------------------------------------------------------ */
@@ -241,7 +322,23 @@ export function ChatView() {
 
     addMessage(sid, createChatMessage("user", choice));
 
-    if (phase === "ask-risk") {
+    if (phase === "confirm-token") {
+      if (choice === "Yes") {
+        addMessage(sid, createChatMessage("assistant", "What's your risk tolerance?"));
+        setPhase("ask-risk");
+      } else {
+        setPending({});
+        setPhase("idle");
+        addMessage(
+          sid,
+          createChatMessage(
+            "assistant",
+            "Tell me the token symbol or mint address you want me to investigate."
+          )
+        );
+      }
+
+    } else if (phase === "ask-risk") {
       const riskMap: Record<string, "safe" | "balanced" | "aggressive"> = {
         "Conservative": "safe",
         "Balanced": "balanced",
@@ -285,14 +382,82 @@ export function ChatView() {
 
     addMessage(sid, createChatMessage("user", text));
     setInputValue("");
-    setPending({ tokenQuery: text });
-    addMessage(sid, createChatMessage("assistant",
-      `Analyzing intent for **${text}**. What's your risk tolerance?`
-    ));
-    setPhase("ask-risk");
+
+    const intent = classifyInput(text);
+    if (intent.mode === "chat" || intent.mode === "research") {
+      await runGeneralChat(sid, text, intent.mode);
+      return;
+    }
+
+    if (intent.mode === "need-token") {
+      addMessage(
+        sid,
+        createChatMessage(
+          "assistant",
+          "Which token or mint address do you want me to investigate?"
+        )
+      );
+      return;
+    }
+
+    setPending({ tokenQuery: intent.tokenQuery });
+    addMessage(
+      sid,
+      createChatMessage(
+        "assistant",
+        `I think you want to investigate **${intent.tokenQuery}**. Is that the token or mint address?`
+      )
+    );
+    setPhase("confirm-token");
   }
 
   /* ---------- Investigation ---------- */
+
+  async function runGeneralChat(
+    sid: string,
+    message: string,
+    mode: "chat" | "research"
+  ) {
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          sessionId: sid,
+          model,
+          mode
+        })
+      });
+
+      if (!res.ok) {
+        let errorMsg = "Unknown error";
+        try {
+          const data = await res.json();
+          errorMsg = data.error ?? errorMsg;
+        } catch {
+          // Ignore malformed error payloads.
+        }
+        addMessage(sid, createChatMessage("assistant", `Chat error: ${errorMsg}`));
+        return;
+      }
+
+      const data = (await res.json()) as GeneralChatResponse;
+      addMessage(sid, createChatMessage("assistant", data.reply));
+    } catch (err) {
+      addMessage(
+        sid,
+        createChatMessage(
+          "assistant",
+          `Error: ${err instanceof Error ? err.message : "Please try again."}`
+        )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   async function runInvestigation(sid: string, config: PendingInvestigation) {
     setIsLoading(true);
@@ -384,6 +549,7 @@ export function ChatView() {
 
   function getMCQOptions(): string[] {
     switch (phase) {
+      case "confirm-token": return ["Yes", "No"];
       case "ask-risk":    return ["Conservative", "Balanced", "Aggressive"];
       case "ask-horizon": return ["Short (hours\u2013days)", "Mid (days\u2013weeks)", "Long (weeks+)"];
       case "ask-depth":   return ["Quick Scan", "Deep Research"];

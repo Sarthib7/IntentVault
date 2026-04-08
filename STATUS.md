@@ -25,9 +25,10 @@ Working MVP with:
 ### Backend
 - **DexScreener live provider** — Real-time Solana token data, keyword search, risk scoring
 - **SolRouter adapter** — Encrypted inference via `@solrouter/sdk` with Arcium RescueCipher
-- **Inference health** — `GET /api/health/inference` reports solrouter vs mock (no secrets); Next loads root `.env.local` for `SOLROUTER_API_KEY`
+- **Inference health** — `GET /api/health/inference` reports solrouter vs mock (no secrets); provider runtime bootstraps root `.env.local` / `.env` so server routes see `SOLROUTER_API_KEY`
 - **SSE streaming** — Both `/api/workflow/investigate-token` and `/api/workflow/deep-research`
 - **Deep research pipeline** — 3 phases: market scan, holder/authority/LP analysis, strategy synthesis
+- **Default chat mode** — Casual prompts use normal LLM chat, general "deep research" stays topic-oriented, and token investigation asks for the token and confirmation before the risk/depth flow
 - **Mock fallback** — Deterministic fake data when APIs are unreachable
 - **Nullable schemas** — All evidence fields support null
 
