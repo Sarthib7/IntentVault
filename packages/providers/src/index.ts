@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { SolRouter } from "@solrouter/sdk";
 import {
   decisionCardSchema,
@@ -8,6 +10,8 @@ import {
   type NormalizedEvidence
 } from "@intentvault/schemas";
 import { summarizeIntent } from "@intentvault/security";
+
+ensureIntentVaultEnvLoaded();
 
 /* ------------------------------------------------------------------ */
 /* Provider interfaces                                                 */
@@ -25,6 +29,19 @@ export interface InferenceProvider {
     evidence: NormalizedEvidence;
     requestId: string;
   }): Promise<DecisionCard>;
+}
+
+export interface ChatProvider {
+  readonly name: string;
+  reply(args: {
+    message: string;
+    sessionId?: string;
+    model?: string;
+    mode?: "chat" | "research";
+  }): Promise<{
+    message: string;
+    model?: string;
+  }>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -553,6 +570,40 @@ export class MockInferenceProvider implements InferenceProvider {
   }
 }
 
+export class MockChatProvider implements ChatProvider {
+  readonly name = "mock-general-chat";
+
+  async reply({
+    message,
+    mode = "chat"
+  }: {
+    message: string;
+    sessionId?: string;
+    model?: string;
+    mode?: "chat" | "research";
+  }) {
+    const trimmed = message.trim();
+    if (mode === "research") {
+      return {
+        message:
+          "Tell me the topic you want researched, and I’ll treat it as a general deep-research request instead of token analysis."
+      };
+    }
+
+    if (/\b(hi|hello|hey|sup|ssup|yo|gm)\b/i.test(trimmed)) {
+      return {
+        message:
+          "Hey. I can chat normally, or run a token investigation when you ask directly. Say something like \"investigate BONK\" or \"price of BONK\" to start the workflow."
+      };
+    }
+
+    return {
+      message:
+        "I can answer general questions here. If you want the Solana token workflow, ask explicitly for an investigation, price check, risk scan, or name a token or mint address."
+    };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* SolRouter inference provider                                        */
 /* ------------------------------------------------------------------ */
@@ -580,11 +631,7 @@ export class SolRouterInferenceProvider implements InferenceProvider {
     baseUrl?: string;
     model?: SolRouterModel;
   }) {
-    this.#client = new SolRouter({
-      apiKey,
-      baseUrl,
-      encrypted: true
-    });
+    this.#client = createSolRouterClient({ apiKey, baseUrl });
     this.model = model;
   }
 
@@ -671,6 +718,55 @@ export class SolRouterInferenceProvider implements InferenceProvider {
   }
 }
 
+export class SolRouterChatProvider implements ChatProvider {
+  readonly name = "solrouter-general-chat";
+  readonly #client: SolRouter;
+
+  constructor({
+    apiKey,
+    baseUrl,
+    model = "gpt-oss-20b"
+  }: {
+    apiKey: string;
+    baseUrl?: string;
+    model?: SolRouterModel;
+  }) {
+    this.#client = createSolRouterClient({ apiKey, baseUrl });
+    this.model = model;
+  }
+
+  readonly model: SolRouterModel;
+
+  async reply({
+    message,
+    sessionId,
+    model,
+    mode = "chat"
+  }: {
+    message: string;
+    sessionId?: string;
+    model?: string;
+    mode?: "chat" | "research";
+  }) {
+    const selectedModel = resolveSolRouterModel(model);
+    const response = await this.#client.chat(message, {
+      model: selectedModel,
+      encrypted: true,
+      chatId: sessionId,
+      useLiveSearch: mode === "research",
+      systemPrompt:
+        mode === "research"
+          ? "You are IntentVault's general deep-research assistant. Research any topic, not just tokens. Use live search when useful. If the user requests deep research without naming a concrete topic, ask one brief clarifying question. Keep the response factual, concise, and well-structured. Only switch into token investigation if the user explicitly asks for token price, risk, liquidity, holders, authority, or market analysis."
+          : "You are IntentVault's default assistant. Chat normally and concisely. Do not start a token investigation unless the user explicitly asks for token price, risk, liquidity, holder, authority, or market analysis."
+    });
+
+    return {
+      message: response.message,
+      model: selectedModel
+    };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Factory functions                                                   */
 /* ------------------------------------------------------------------ */
@@ -704,6 +800,26 @@ export function createInferenceProvider(): InferenceProvider {
   }
 
   return new SolRouterInferenceProvider({
+    apiKey,
+    baseUrl: process.env.SOLROUTER_BASE_URL?.trim() || undefined,
+    model: resolveSolRouterModel(process.env.SOLROUTER_MODEL)
+  });
+}
+
+export function createChatProvider(): ChatProvider {
+  const mode = process.env.INTENTVAULT_INFERENCE_MODE ?? "auto";
+
+  if (mode === "mock") {
+    return new MockChatProvider();
+  }
+
+  const apiKey = process.env.SOLROUTER_API_KEY?.trim();
+
+  if (!apiKey) {
+    return new MockChatProvider();
+  }
+
+  return new SolRouterChatProvider({
     apiKey,
     baseUrl: process.env.SOLROUTER_BASE_URL?.trim() || undefined,
     model: resolveSolRouterModel(process.env.SOLROUTER_MODEL)
@@ -834,4 +950,93 @@ function resolveSolRouterModel(value: string | undefined): SolRouterModel {
     return value as SolRouterModel;
   }
   return "gpt-oss-20b";
+}
+
+function createSolRouterClient({
+  apiKey,
+  baseUrl
+}: {
+  apiKey: string;
+  baseUrl?: string;
+}) {
+  return new SolRouter({
+    apiKey,
+    baseUrl: normalizeSolRouterBaseUrl(baseUrl),
+    encrypted: true
+  });
+}
+
+function normalizeSolRouterBaseUrl(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  return value
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/tee\/process$/, "")
+    .replace(/\/api\/v1\/balance$/, "")
+    .replace(/\/(?:agent|router|nosana|gemini|claude|openai)$/, "");
+}
+
+function ensureIntentVaultEnvLoaded() {
+  if (process.env.__INTENTVAULT_ENV_LOADED === "1") {
+    return;
+  }
+
+  for (const directory of candidateEnvDirectories(process.cwd())) {
+    loadEnvFile(path.join(directory, ".env.local"));
+    loadEnvFile(path.join(directory, ".env"));
+  }
+
+  process.env.__INTENTVAULT_ENV_LOADED = "1";
+}
+
+function candidateEnvDirectories(start: string) {
+  const directories: string[] = [];
+  let current = path.resolve(start);
+
+  for (let depth = 0; depth < 4; depth += 1) {
+    directories.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  return directories;
+}
+
+function loadEnvFile(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const equalsIndex = trimmed.indexOf("=");
+    if (equalsIndex === -1) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, equalsIndex).trim();
+    if (!key || process.env[key] !== undefined) {
+      continue;
+    }
+
+    let value = trimmed.slice(equalsIndex + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
 }

@@ -116,6 +116,26 @@ export const workflowResponseSchema = z.object({
 
 export type WorkflowResponse = z.infer<typeof workflowResponseSchema>;
 
+export const generalChatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+  sessionId: z.string().trim().max(120).optional().or(z.literal("")),
+  model: z.string().trim().max(80).optional().or(z.literal("")),
+  mode: z.enum(["chat", "research"]).optional()
+});
+
+export type GeneralChatRequest = z.infer<typeof generalChatRequestSchema>;
+
+export const generalChatResponseSchema = z.object({
+  reply: z.string(),
+  runtime: z.object({
+    providerName: z.string(),
+    generatedAt: z.string(),
+    model: z.string().optional()
+  })
+});
+
+export type GeneralChatResponse = z.infer<typeof generalChatResponseSchema>;
+
 /* ------------------------------------------------------------------ */
 /* Chat message types for the session timeline UI                      */
 /* ------------------------------------------------------------------ */
