@@ -38,6 +38,11 @@ IntentVault is a private workflow layer for Solana decision support. The current
 - `user.email`: `sarthiborkar7@gmail.com`
 - Before creating commits, verify the local git config matches those values.
 
+## Git hooks
+
+- After cloning, run once: `git config core.hooksPath .githooks`
+- `prepare-commit-msg` strips a `Made-with: Cursor` line so commits stay clean when the editor injects it. To turn off injection in Cursor: **Settings → Agents → Attribution**, disable **Commit attribution** (and PR attribution if you want).
+
 ## Suggested Task Ownership
 
 - UI and interaction work: `apps/web`

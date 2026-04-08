@@ -1,0 +1,8 @@
+#!/bin/sh
+# Removes IDE-injected footers so they never land in history.
+msg=$1
+[ -n "$msg" ] && [ -f "$msg" ] || exit 0
+if grep -q '^Made-with: Cursor$' "$msg"; then
+  grep -v '^Made-with: Cursor$' "$msg" > "${msg}.tmp" && mv "${msg}.tmp" "$msg"
+fi
+exit 0
