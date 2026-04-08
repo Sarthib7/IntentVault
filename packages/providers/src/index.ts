@@ -172,6 +172,16 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
       );
     }
 
+    const priceUsd = toNonNegativeNumber(pair.priceUsd);
+    const liquidityUsd = toNonNegativeNumber(pair.liquidity?.usd);
+    const marketCapUsd = toNonNegativeNumber(pair.marketCap);
+    const fdvUsd = toNonNegativeNumber(pair.fdv);
+    const volume5mUsd = toNonNegativeNumber(pair.volume?.m5);
+    const volume1hUsd = toNonNegativeNumber(pair.volume?.h1);
+    const volume24hUsd = toNonNegativeNumber(pair.volume?.h24);
+    const priceChange24hPct = toFiniteNumber(pair.priceChange?.h24);
+    const pairCreatedAt = toPositiveTimestamp(pair.pairCreatedAt);
+
     // Build risk factors from available data
     const factors = this.buildRiskFactors(pair);
     const score = this.computeRiskScore(pair, factors);
@@ -185,14 +195,14 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
         name: pair.baseToken.name ?? null
       },
       market: {
-        priceUsd: pair.priceUsd ? parseFloat(pair.priceUsd) : null,
-        liquidityUsd: pair.liquidity?.usd ?? null,
-        marketCapUsd: pair.marketCap ?? null,
-        fdvUsd: pair.fdv ?? null,
-        volume5mUsd: pair.volume?.m5 ?? null,
-        volume1hUsd: pair.volume?.h1 ?? null,
-        volume24hUsd: pair.volume?.h24 ?? null,
-        priceChange24hPct: pair.priceChange?.h24 ?? null
+        priceUsd,
+        liquidityUsd,
+        marketCapUsd,
+        fdvUsd,
+        volume5mUsd,
+        volume1hUsd,
+        volume24hUsd,
+        priceChange24hPct
       },
       holders: {
         holderCount: null,
@@ -213,8 +223,8 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
         pairAddress: pair.pairAddress,
         dexId: pair.dexId,
         pairUrl: pair.url ?? null,
-        createdAt: pair.pairCreatedAt
-          ? new Date(pair.pairCreatedAt).toISOString()
+        createdAt: pairCreatedAt
+          ? new Date(pairCreatedAt).toISOString()
           : null
       },
       sources: [
@@ -243,7 +253,7 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
       if (!response.ok) return null;
 
       const pairs: DexScreenerPair[] = await response.json();
-      return this.pickBestPair(pairs);
+      return this.pickBestPair(pairs, address);
     } catch {
       return null;
     }
@@ -270,28 +280,79 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
         (p) => p.chainId === "solana"
       );
 
-      return this.pickBestPair(solanaPairs);
+      return this.pickBestPair(solanaPairs, query);
     } catch {
       return null;
     }
   }
 
-  private pickBestPair(pairs: DexScreenerPair[]): DexScreenerPair | null {
+  private pickBestPair(
+    pairs: DexScreenerPair[],
+    query?: string
+  ): DexScreenerPair | null {
     if (!pairs || pairs.length === 0) return null;
 
-    // Pick the pair with highest 24h volume (most active)
-    return pairs.reduce((best, current) => {
-      const bestVol = best.volume?.h24 ?? 0;
-      const currentVol = current.volume?.h24 ?? 0;
-      return currentVol > bestVol ? current : best;
-    }, pairs[0]);
+    const ranked = [...pairs].sort((left, right) => {
+      const scoreDifference =
+        this.scorePair(right, query) - this.scorePair(left, query);
+      if (scoreDifference !== 0) {
+        return scoreDifference;
+      }
+
+      const rightVolume = toNonNegativeNumber(right.volume?.h24) ?? 0;
+      const leftVolume = toNonNegativeNumber(left.volume?.h24) ?? 0;
+      return rightVolume - leftVolume;
+    });
+
+    return ranked[0];
+  }
+
+  private scorePair(pair: DexScreenerPair, query?: string) {
+    let score = 0;
+    const queryKey = normalizeTokenKey(query);
+    const isAddressQuery = Boolean(query && isSolanaAddress(query));
+
+    if (isAddressQuery && pair.baseToken.address === query) {
+      score += 1_000_000;
+    }
+
+    if (isAddressQuery && pair.pairAddress === query) {
+      score += 500_000;
+    }
+
+    if (queryKey) {
+      const baseSymbol = normalizeTokenKey(pair.baseToken.symbol);
+      const baseName = normalizeTokenKey(pair.baseToken.name);
+      const quoteSymbol = normalizeTokenKey(pair.quoteToken.symbol);
+      const quoteName = normalizeTokenKey(pair.quoteToken.name);
+
+      if (baseSymbol === queryKey) score += 100_000;
+      if (baseName === queryKey) score += 90_000;
+      if (baseSymbol.startsWith(queryKey) || queryKey.startsWith(baseSymbol)) {
+        score += 30_000;
+      }
+      if (baseName.includes(queryKey)) score += 12_000;
+
+      // Penalize quote-token-only matches like TRX/SOL when the user asked for SOL.
+      if (quoteSymbol === queryKey) score -= 60_000;
+      if (quoteName === queryKey) score -= 40_000;
+      if (quoteSymbol.includes(queryKey) || quoteName.includes(queryKey)) {
+        score -= 8_000;
+      }
+    }
+
+    score += Math.round((toNonNegativeNumber(pair.liquidity?.usd) ?? 0) / 100);
+    score += Math.round((toNonNegativeNumber(pair.volume?.h24) ?? 0) / 250);
+    score += Math.round((toNonNegativeNumber(pair.marketCap) ?? 0) / 5_000);
+
+    return score;
   }
 
   private buildRiskFactors(pair: DexScreenerPair) {
     const factors = [];
 
     // Liquidity risk
-    const liqUsd = pair.liquidity?.usd ?? 0;
+    const liqUsd = toNonNegativeNumber(pair.liquidity?.usd) ?? 0;
     factors.push(
       publicRiskFactorSchema.parse({
         label: "Liquidity depth",
@@ -304,7 +365,7 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
     );
 
     // Volume risk
-    const vol24h = pair.volume?.h24 ?? 0;
+    const vol24h = toNonNegativeNumber(pair.volume?.h24) ?? 0;
     factors.push(
       publicRiskFactorSchema.parse({
         label: "24h trading volume",
@@ -317,7 +378,7 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
     );
 
     // Price volatility
-    const change24h = pair.priceChange?.h24;
+    const change24h = toFiniteNumber(pair.priceChange?.h24);
     if (change24h !== undefined && change24h !== null) {
       const absChange = Math.abs(change24h);
       factors.push(
@@ -330,8 +391,9 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
     }
 
     // Pair age risk
-    if (pair.pairCreatedAt) {
-      const ageMs = Date.now() - pair.pairCreatedAt;
+    const pairCreatedAt = toPositiveTimestamp(pair.pairCreatedAt);
+    if (pairCreatedAt) {
+      const ageMs = Date.now() - pairCreatedAt;
       const ageDays = ageMs / (1000 * 60 * 60 * 24);
       factors.push(
         publicRiskFactorSchema.parse({
@@ -343,13 +405,15 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
     }
 
     // FDV / market cap ratio
-    if (pair.fdv && pair.marketCap && pair.marketCap > 0) {
-      const ratio = pair.fdv / pair.marketCap;
+    const fdv = toNonNegativeNumber(pair.fdv);
+    const marketCap = toNonNegativeNumber(pair.marketCap);
+    if (fdv && marketCap && marketCap > 0) {
+      const ratio = fdv / marketCap;
       if (ratio > 5) {
         factors.push(
           publicRiskFactorSchema.parse({
             label: "FDV to market cap ratio",
-            evidence: `FDV ($${formatCompact(pair.fdv)}) is ${ratio.toFixed(1)}x market cap ($${formatCompact(pair.marketCap)}), suggesting large unlocked supply.`,
+            evidence: `FDV ($${formatCompact(fdv)}) is ${ratio.toFixed(1)}x market cap ($${formatCompact(marketCap)}), suggesting large unlocked supply.`,
             severity: ratio > 20 ? "high" : "medium"
           })
         );
@@ -376,22 +440,23 @@ export class DexScreenerPublicSignalsProvider implements PublicSignalsProvider {
   ): number {
     let score = 50; // Start neutral
 
-    const liqUsd = pair.liquidity?.usd ?? 0;
+    const liqUsd = toNonNegativeNumber(pair.liquidity?.usd) ?? 0;
     if (liqUsd < 10_000) score += 20;
     else if (liqUsd < 50_000) score += 10;
     else if (liqUsd > 500_000) score -= 15;
 
-    const vol24h = pair.volume?.h24 ?? 0;
+    const vol24h = toNonNegativeNumber(pair.volume?.h24) ?? 0;
     if (vol24h < 5_000) score += 15;
     else if (vol24h > 100_000) score -= 10;
 
-    const change24h = pair.priceChange?.h24;
+    const change24h = toFiniteNumber(pair.priceChange?.h24);
     if (change24h !== undefined && change24h !== null) {
       if (Math.abs(change24h) > 50) score += 10;
     }
 
-    if (pair.pairCreatedAt) {
-      const ageDays = (Date.now() - pair.pairCreatedAt) / (1000 * 60 * 60 * 24);
+    const pairCreatedAt = toPositiveTimestamp(pair.pairCreatedAt);
+    if (pairCreatedAt) {
+      const ageDays = (Date.now() - pairCreatedAt) / (1000 * 60 * 60 * 24);
       if (ageDays < 3) score += 15;
       else if (ageDays < 7) score += 8;
     }
@@ -934,6 +999,39 @@ function formatCompact(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toFixed(0);
+}
+
+function toNonNegativeNumber(value: number | string | undefined | null) {
+  const numeric =
+    typeof value === "string" ? Number.parseFloat(value) : value ?? null;
+  if (numeric === null || !Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function toFiniteNumber(value: number | string | undefined | null) {
+  const numeric =
+    typeof value === "string" ? Number.parseFloat(value) : value ?? null;
+  if (numeric === null || !Number.isFinite(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+
+function toPositiveTimestamp(value: number | undefined | null) {
+  if (!value || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return value;
+}
+
+function normalizeTokenKey(value: string | undefined | null) {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSolanaAddress(value: string) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
 }
 
 function extractJsonObject(value: string) {
