@@ -29,6 +29,7 @@ Working MVP with:
 - **SSE streaming** — Both `/api/workflow/investigate-token` and `/api/workflow/deep-research`
 - **Deep research pipeline** — 3 phases: market scan, holder/authority/LP analysis, strategy synthesis
 - **Default chat mode** — Casual prompts use normal LLM chat, general "deep research" stays topic-oriented, and token investigation asks for the token and confirmation before the risk/depth flow
+- **DexScreener matching** — Search now prefers exact base-token matches over quote-token matches, and invalid negative market-cap/FDV values are normalized instead of failing the workflow
 - **Mock fallback** — Deterministic fake data when APIs are unreachable
 - **Nullable schemas** — All evidence fields support null
 
