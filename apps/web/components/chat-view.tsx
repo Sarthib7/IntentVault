@@ -53,13 +53,6 @@ const SOLROUTER_MODELS = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini", cost: "$0.15/M" }
 ];
 
-const STARTER_PROMPTS = [
-  "what's cooking",
-  "deep research the history of Solana",
-  "Should I buy BONK?",
-  "compare btc and sol for a long-term thesis"
-];
-
 /* ------------------------------------------------------------------ */
 /* Welcome screen content                                              */
 /* ------------------------------------------------------------------ */
@@ -80,20 +73,20 @@ type MessageBlock =
 const CAPABILITIES: Capability[] = [
   {
     icon: "\uD83D\uDD12",
-    title: "Private by default",
-    description: "Intent stays in the encrypted inference path instead of becoming UI noise or public prompt context.",
+    title: "General Chat",
+    description: "Normal questions stay simple and fast.",
     badge: "live"
   },
   {
     icon: "\uD83D\uDD0D",
-    title: "Research without routing mistakes",
-    description: "Normal questions stay chat. Deep research stays topic research. Token workflows start only after confirmation.",
+    title: "Deep Research",
+    description: "Use topic research without triggering token flow.",
     badge: "live"
   },
   {
     icon: "\uD83C\uDFAF",
-    title: "Token flows when you ask",
-    description: "If you ask about BONK, BTC, or SOL, the system confirms the asset before moving into structured investigation.",
+    title: "Token Investigation",
+    description: "Confirm the asset first, then route into analysis.",
     badge: "live"
   }
 ];
@@ -622,6 +615,7 @@ export function ChatView() {
   const mcqOptions = getMCQOptions();
   const showMCQ = mcqOptions.length > 0 && !isLoading;
   const currentModel = SOLROUTER_MODELS.find((m) => m.value === model);
+  const showWelcome = messages.length === 0 && !isLoading && phase === "idle";
 
   function handleStarterPrompt(prompt: string) {
     setInputValue(prompt);
@@ -632,57 +626,81 @@ export function ChatView() {
     <div className="chat-area">
       <div className="chat-header">
         <div className="chat-header-left chat-header-copy">
-          <div className="chat-title-block">
-            <span className="chat-kicker">encrypted conversation</span>
-            <h2>{phase === "idle" ? "What do you want to know?" : "Guided investigation in progress."}</h2>
-          </div>
+          <span className="chat-back">{"\u2039"}</span>
+          <span className="chat-thread-title">
+            {session?.title && session.title.trim() ? session.title : "Name chat"}
+          </span>
+          <span className="chat-thread-pill">Chat GPT 5.0</span>
         </div>
         <div className="chat-header-right">
-          <span className="chat-mode-tag">
-            {phase === "idle" ? "chat mode" : "analysis flow"}
-          </span>
-          <span className="provider-tag">{currentModel?.label ?? model}</span>
+          <button type="button" className="chat-header-icon" aria-label="Bookmark thread">
+            {"\u2316"}
+          </button>
+          <button type="button" className="chat-header-icon" aria-label="Share thread">
+            {"\u21E7"}
+          </button>
         </div>
       </div>
 
       <div className="messages-container" ref={messagesContainerRef}>
         <div className="messages-inner">
-          {messages.length === 0 && !isLoading && phase === "idle" ? (
+          {showWelcome ? (
             <div className="welcome-screen">
               <div className="welcome-panel">
-                <span className="welcome-kicker">clean private research</span>
+                <span className="welcome-mark">{"\u2733"}</span>
                 <div className="welcome-brand">
-                  Minimal chat. <span>Precise routing.</span>
+                  How can I help you today?
                 </div>
                 <p className="welcome-desc">
-                  Ask a normal question, request deep research on any topic, or ask about a token.
-                  The interface should stay quiet until you need structured analysis.
+                  General chat, topic research, and token investigation in one quiet interface.
                 </p>
-                <div className="welcome-actions">
-                  {STARTER_PROMPTS.map((prompt) => (
+                <div className="landing-grid">
+                  {CAPABILITIES.map((cap) => (
                     <button
-                      key={prompt}
+                      key={cap.title}
                       type="button"
-                      className="starter-chip"
-                      onClick={() => handleStarterPrompt(prompt)}
+                      className="landing-card"
+                      onClick={() => handleStarterPrompt(
+                        cap.title === "General Chat"
+                          ? "what's cooking"
+                          : cap.title === "Deep Research"
+                            ? "deep research the history of Solana"
+                            : "Should I buy BONK?"
+                      )}
                     >
-                      {prompt}
+                      <div className="feature-card-top">
+                        <span className="feature-icon">{cap.icon}</span>
+                      </div>
+                      <span className="landing-card-title">{cap.title}</span>
+                      <span className="landing-card-desc">{cap.description}</span>
                     </button>
                   ))}
                 </div>
-              </div>
-
-              <div className="landing-grid">
-                {CAPABILITIES.map((cap) => (
-                  <div key={cap.title} className="landing-card">
-                    <div className="feature-card-top">
-                      <span className="feature-icon">{cap.icon}</span>
-                      <span className={`feature-badge ${cap.badge}`}>{cap.badge}</span>
-                    </div>
-                    <span className="landing-card-title">{cap.title}</span>
-                    <span className="landing-card-desc">{cap.description}</span>
+                <div className="welcome-tabs">
+                  <span className="welcome-tab active">All</span>
+                  <span className="welcome-tab">Text</span>
+                  <span className="welcome-tab">Research</span>
+                  <span className="welcome-tab">Tokens</span>
+                </div>
+                <form className="welcome-composer" onSubmit={handleSubmit}>
+                  <div className="welcome-composer-shell">
+                    <span className="welcome-composer-icon">{"\u2733"}</span>
+                    <input
+                      className="welcome-composer-input"
+                      placeholder="Type your prompt here..."
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="welcome-composer-send"
+                      disabled={!inputValue.trim() || isLoading}
+                      title="Send"
+                    >
+                      &rarr;
+                    </button>
                   </div>
-                ))}
+                </form>
               </div>
             </div>
           ) : (
@@ -812,6 +830,7 @@ export function ChatView() {
       </div>
 
       {/* Input */}
+      {!showWelcome && (
       <div className="input-bar">
         <div className="input-bar-inner">
           <form className="input-row" onSubmit={handleSubmit}>
@@ -885,6 +904,7 @@ export function ChatView() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
