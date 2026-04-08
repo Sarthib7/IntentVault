@@ -1,24 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { ChatView } from "@/components/chat-view";
 
 export default function HomePage() {
-  const [theme, setTheme] = useState<"dark" | "light">("light");
-
-  // Apply theme to <html> element
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
-
-  function toggleTheme() {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-  }
+    document.documentElement.setAttribute("data-theme", "dark");
+  }, []);
 
   return (
     <div className="app-layout">
-      <Sidebar theme={theme} onToggleTheme={toggleTheme} />
+      <Sidebar />
       <ChatView />
     </div>
   );

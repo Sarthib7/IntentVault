@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useSessions, useActiveSessionId } from "@/lib/use-session-store";
 import { createSession, setActiveSession } from "@/lib/session-store";
+
+const SAMPLE_FOLDERS = [
+  "Work chats",
+  "Life chats",
+  "Projects chats",
+  "Clients chats"
+];
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -14,51 +20,51 @@ function formatTime(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-interface SidebarProps {
-  theme: "dark" | "light";
-  onToggleTheme: () => void;
-}
-
-export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
+export function Sidebar() {
   const sessions = useSessions();
   const activeId = useActiveSessionId();
-  const [walletHover, setWalletHover] = useState(false);
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
+      <div className="sidebar-topbar">
         <div className="sidebar-brand">
-          <h1>INTENTVAULT</h1>
-          <span className="brand-cursor" />
+          <div className="brand-mark">
+            <span className="brand-cursor" />
+          </div>
+          <div className="sidebar-brand-copy">
+            <span className="sidebar-kicker">intentvault</span>
+            <h1>My Chats</h1>
+          </div>
         </div>
-        <button
-          className="theme-toggle"
-          onClick={onToggleTheme}
-          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        >
-          {theme === "dark" ? "\u2600" : "\u263E"}
-        </button>
+        <div className="sidebar-tool" aria-hidden="true">
+          {"\u2630"}
+        </div>
       </div>
 
-      {/* Wallet connect preview */}
-      <div
-        className="wallet-preview"
-        onMouseEnter={() => setWalletHover(true)}
-        onMouseLeave={() => setWalletHover(false)}
-      >
-        <button className="wallet-btn" disabled>
-          <span className="wallet-icon">{"\uD83D\uDCBB"}</span>
-          <span className="wallet-text">
-            {walletHover ? "Coming soon" : "Connect Wallet"}
-          </span>
-        </button>
-        <span className="wallet-hint">Read-only &middot; No signing</span>
+      <div className="sidebar-search">
+        <div className="sidebar-search-box">
+          <span className="sidebar-search-icon">{"\u2315"}</span>
+          <span className="sidebar-search-placeholder">Search</span>
+        </div>
       </div>
 
-      <button className="new-chat-btn" onClick={() => createSession()}>
-        + new_investigation
-      </button>
+      <div className="sidebar-group">
+        <div className="sidebar-group-label">Folders</div>
+        <div className="sidebar-sample-list">
+          {SAMPLE_FOLDERS.map((label) => (
+            <div key={label} className="sidebar-sample-card" aria-hidden="true">
+              <span className="sidebar-sample-accent" />
+              <span className="sidebar-sample-name">{label}</span>
+              <span className="sidebar-sample-more">{"\u2026"}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
+      <div className="session-list-head">
+        <div className="session-list-label">chats</div>
+        <span className="session-count">{sessions.length}</span>
+      </div>
       <div className="session-list">
         {sessions.map((session) => (
           <div
@@ -76,13 +82,11 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
       </div>
 
       <div className="sidebar-footer">
-        <span>
-          Powered by{" "}
-          <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
-            SolRouter
-          </a>
-        </span>
-        <span>Encrypted Inference &middot; Arcium TEE</span>
+        <button className="new-chat-btn" onClick={() => createSession()}>
+          <span>New chat</span>
+          <span className="new-chat-btn-mark">+</span>
+        </button>
+        <span className="sidebar-footer-note">SolRouter encrypted</span>
       </div>
     </aside>
   );

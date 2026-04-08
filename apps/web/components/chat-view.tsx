@@ -5,6 +5,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  type ReactNode,
   type FormEvent,
   type KeyboardEvent
 } from "react";
@@ -63,42 +64,30 @@ interface Capability {
   badge: "live" | "soon" | "planned";
 }
 
+type MessageBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "unordered-list"; items: string[] }
+  | { type: "ordered-list"; items: string[] }
+  | { type: "table"; header: string[]; rows: string[][] };
+
 const CAPABILITIES: Capability[] = [
   {
     icon: "\uD83D\uDD12",
-    title: "Encrypted Inference",
-    description: "Your intent is encrypted client-side via Arcium RescueCipher. SolRouter never sees plaintext.",
+    title: "General Chat",
+    description: "Normal questions stay simple and fast.",
     badge: "live"
   },
   {
     icon: "\uD83D\uDD0D",
-    title: "Research Agent",
-    description: "Multi-phase deep research with holder analysis, authority audit, and liquidity depth.",
+    title: "Deep Research",
+    description: "Use topic research without triggering token flow.",
     badge: "live"
   },
   {
     icon: "\uD83C\uDFAF",
-    title: "Intent Signals",
-    description: "Understand what your query reveals publicly vs. what stays inside the privacy boundary.",
-    badge: "soon"
-  },
-  {
-    icon: "\uD83E\uDDE0",
-    title: "Strategy Synthesis",
-    description: "Personalized risk-adjusted strategies generated through private inference.",
+    title: "Token Investigation",
+    description: "Confirm the asset first, then route into analysis.",
     badge: "live"
-  },
-  {
-    icon: "\u26D3\uFE0F",
-    title: "On-Chain Attestation",
-    description: "Verify privacy guarantees with SolRouter attestation IDs on Solana.",
-    badge: "soon"
-  },
-  {
-    icon: "\uD83D\uDCCA",
-    title: "Portfolio Risk Scan",
-    description: "Scan wallet holdings for risk exposure without revealing your strategy.",
-    badge: "planned"
   }
 ];
 
@@ -134,6 +123,132 @@ function stepIcon(status: string): string {
     case "error":   return "\u2717";
     default:        return "\u25CB";
   }
+}
+
+function renderInlineContent(text: string): ReactNode[] {
+  return text.split(/\*\*(.*?)\*\*/g).map((part, index) =>
+    index % 2 === 1 ? <strong key={index}>{part}</strong> : <span key={index}>{part}</span>
+  );
+}
+
+function isTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|", 1);
+}
+
+function splitTableCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  const cells = splitTableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function parseMessageBlocks(content: string): MessageBlock[] {
+  const lines = content.split("\n");
+  const blocks: MessageBlock[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const currentLine = lines[index]?.trim() ?? "";
+
+    if (!currentLine) {
+      index += 1;
+      continue;
+    }
+
+    const nextLine = lines[index + 1]?.trim() ?? "";
+    if (isTableLine(currentLine) && nextLine && isTableSeparatorLine(nextLine)) {
+      const header = splitTableCells(currentLine);
+      const rows: string[][] = [];
+      index += 2;
+
+      while (index < lines.length) {
+        const rowLine = lines[index]?.trim() ?? "";
+        if (!isTableLine(rowLine)) {
+          break;
+        }
+
+        rows.push(splitTableCells(rowLine));
+        index += 1;
+      }
+
+      blocks.push({ type: "table", header, rows });
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(currentLine)) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const listLine = lines[index]?.trim() ?? "";
+        if (!/^[-*]\s+/.test(listLine)) {
+          break;
+        }
+
+        items.push(listLine.replace(/^[-*]\s+/, "").trim());
+        index += 1;
+      }
+
+      blocks.push({ type: "unordered-list", items });
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(currentLine)) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const listLine = lines[index]?.trim() ?? "";
+        if (!/^\d+\.\s+/.test(listLine)) {
+          break;
+        }
+
+        items.push(listLine.replace(/^\d+\.\s+/, "").trim());
+        index += 1;
+      }
+
+      blocks.push({ type: "ordered-list", items });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const paragraphLine = lines[index]?.trim() ?? "";
+      const paragraphNextLine = lines[index + 1]?.trim() ?? "";
+
+      if (!paragraphLine) {
+        break;
+      }
+
+      if (/^[-*]\s+/.test(paragraphLine) || /^\d+\.\s+/.test(paragraphLine)) {
+        break;
+      }
+
+      if (isTableLine(paragraphLine) && paragraphNextLine && isTableSeparatorLine(paragraphNextLine)) {
+        break;
+      }
+
+      paragraphLines.push(paragraphLine);
+      index += 1;
+    }
+
+    if (paragraphLines.length > 0) {
+      blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
+      continue;
+    }
+
+    index += 1;
+  }
+
+  if (blocks.length === 0) {
+    return [{ type: "paragraph", text: content.trim() }];
+  }
+
+  return blocks;
 }
 
 /* ------------------------------------------------------------------ */
@@ -200,19 +315,37 @@ export function ChatView() {
   // Streaming
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   const messages = session?.messages ?? [];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "smooth"
+    });
   }, [messages.length, isLoading, workflowSteps.length, phase]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [session?.id, phase]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.style.height = "0px";
+    input.style.height = `${input.scrollHeight}px`;
+  }, [inputValue, phase]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -482,60 +615,98 @@ export function ChatView() {
   const mcqOptions = getMCQOptions();
   const showMCQ = mcqOptions.length > 0 && !isLoading;
   const currentModel = SOLROUTER_MODELS.find((m) => m.value === model);
+  const showWelcome = messages.length === 0 && !isLoading && phase === "idle";
+
+  function handleStarterPrompt(prompt: string) {
+    setInputValue(prompt);
+    inputRef.current?.focus();
+  }
 
   return (
     <div className="chat-area">
-      {/* Header */}
       <div className="chat-header">
-        <div className="chat-header-left">
-          <h2>IntentVault</h2>
-          <div className="provider-tags">
-            <span className="provider-tag active" title="End-to-end encrypted inference">
-              SolRouter Encrypted
-            </span>
-            <span className="provider-tag">{currentModel?.label ?? model}</span>
-          </div>
+        <div className="chat-header-left chat-header-copy">
+          <span className="chat-back">{"\u2039"}</span>
+          <span className="chat-thread-title">
+            {session?.title && session.title.trim() ? session.title : "Name chat"}
+          </span>
+          <span className="chat-thread-pill">Chat GPT 5.0</span>
+        </div>
+        <div className="chat-header-right">
+          <button type="button" className="chat-header-icon" aria-label="Bookmark thread">
+            {"\u2316"}
+          </button>
+          <button type="button" className="chat-header-icon" aria-label="Share thread">
+            {"\u21E7"}
+          </button>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         <div className="messages-inner">
-          {messages.length === 0 && !isLoading && phase === "idle" ? (
+          {showWelcome ? (
             <div className="welcome-screen">
-              <div className="welcome-brand">
-                Intent<span>Vault</span>
-              </div>
-              <p className="welcome-desc">
-                Private decision workflows powered by{" "}
-                <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
-                  SolRouter
-                </a>
-                's encrypted inference. Your intent never leaves the privacy boundary.
-                Public signals flow in. Private reasoning stays encrypted.
-              </p>
-
-              <div className="feature-grid">
-                {CAPABILITIES.map((cap) => (
-                  <div key={cap.title} className="feature-card">
-                    <div className="feature-card-top">
-                      <span className="feature-icon">{cap.icon}</span>
-                      <span className={`feature-badge ${cap.badge}`}>{cap.badge}</span>
-                    </div>
-                    <span className="feature-name">{cap.title}</span>
-                    <span className="feature-desc">{cap.description}</span>
+              <div className="welcome-panel">
+                <span className="welcome-mark">{"\u2733"}</span>
+                <div className="welcome-brand">
+                  How can I help you today?
+                </div>
+                <p className="welcome-desc">
+                  General chat, topic research, and token investigation in one quiet interface.
+                </p>
+                <div className="landing-grid">
+                  {CAPABILITIES.map((cap) => (
+                    <button
+                      key={cap.title}
+                      type="button"
+                      className="landing-card"
+                      onClick={() => handleStarterPrompt(
+                        cap.title === "General Chat"
+                          ? "what's cooking"
+                          : cap.title === "Deep Research"
+                            ? "deep research the history of Solana"
+                            : "Should I buy BONK?"
+                      )}
+                    >
+                      <div className="feature-card-top">
+                        <span className="feature-icon">{cap.icon}</span>
+                      </div>
+                      <span className="landing-card-title">{cap.title}</span>
+                      <span className="landing-card-desc">{cap.description}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="welcome-tabs">
+                  <span className="welcome-tab active">All</span>
+                  <span className="welcome-tab">Text</span>
+                  <span className="welcome-tab">Research</span>
+                  <span className="welcome-tab">Tokens</span>
+                </div>
+                <form className="welcome-composer" onSubmit={handleSubmit}>
+                  <div className="welcome-composer-shell">
+                    <span className="welcome-composer-icon">{"\u2733"}</span>
+                    <input
+                      className="welcome-composer-input"
+                      placeholder="Type your prompt here..."
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="welcome-composer-send"
+                      disabled={!inputValue.trim() || isLoading}
+                      title="Send"
+                    >
+                      &rarr;
+                    </button>
                   </div>
-                ))}
-              </div>
-
-              <div className="welcome-hint">
-                describe your intent \u2014 e.g. "Should I buy BONK?" or "What's the risk on JUP?"
+                </form>
               </div>
             </div>
           ) : (
             <>
               {messages.map((msg) => (
-                <div key={msg.id} className="message">
+                <div key={msg.id} className={`message ${msg.role}`}>
                   <div className={`msg-indicator ${msg.role}`} />
                   <div className="msg-body">
                     <div className="msg-meta">
@@ -545,17 +716,60 @@ export function ChatView() {
                       <span className="msg-time">{formatTime(msg.timestamp)}</span>
                     </div>
                     <div className="msg-text">
-                      {msg.content.split("\n").map((line, i) => (
-                        <p key={i}>
-                          {line.split(/\*\*(.*?)\*\*/g).map((part, j) =>
-                            j % 2 === 1 ? (
-                              <strong key={j}>{part}</strong>
-                            ) : (
-                              <span key={j}>{part}</span>
-                            )
-                          )}
-                        </p>
-                      ))}
+                      {parseMessageBlocks(msg.content).map((block, index) => {
+                        if (block.type === "paragraph") {
+                          return (
+                            <p key={index} className="msg-paragraph">
+                              {renderInlineContent(block.text)}
+                            </p>
+                          );
+                        }
+
+                        if (block.type === "unordered-list") {
+                          return (
+                            <ul key={index} className="msg-list">
+                              {block.items.map((item, itemIndex) => (
+                                <li key={itemIndex}>{renderInlineContent(item)}</li>
+                              ))}
+                            </ul>
+                          );
+                        }
+
+                        if (block.type === "ordered-list") {
+                          return (
+                            <ol key={index} className="msg-list ordered">
+                              {block.items.map((item, itemIndex) => (
+                                <li key={itemIndex}>{renderInlineContent(item)}</li>
+                              ))}
+                            </ol>
+                          );
+                        }
+
+                        return (
+                          <div key={index} className="msg-table-wrap">
+                            <table className="msg-table">
+                              <thead>
+                                <tr>
+                                  {block.header.map((cell, cellIndex) => (
+                                    <th key={cellIndex}>{renderInlineContent(cell)}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {block.rows.map((row, rowIndex) => (
+                                  <tr key={rowIndex}>
+                                    {block.header.map((_, cellIndex) => (
+                                      <td key={cellIndex}>
+                                        {renderInlineContent(row[cellIndex] ?? "")}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })}
                     </div>
                     {msg.workflowResponse && (
                       <ChatDecisionCard response={msg.workflowResponse} />
@@ -579,7 +793,7 @@ export function ChatView() {
 
           {/* Steps */}
           {isLoading && workflowSteps.length > 0 && (
-            <div className="message">
+            <div className="message assistant loading">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
                 <div className="msg-meta">
@@ -600,7 +814,7 @@ export function ChatView() {
           )}
 
           {isLoading && workflowSteps.length === 0 && (
-            <div className="message">
+            <div className="message assistant loading">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
                 <div className="workflow-steps">
@@ -612,12 +826,11 @@ export function ChatView() {
               </div>
             </div>
           )}
-
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
       {/* Input */}
+      {!showWelcome && (
       <div className="input-bar">
         <div className="input-bar-inner">
           <form className="input-row" onSubmit={handleSubmit}>
@@ -687,10 +900,11 @@ export function ChatView() {
           </form>
 
           <div className="input-footer">
-            Encrypted via SolRouter &middot; Arcium RescueCipher &middot; TEE Processing &middot; No plaintext logging
+            encrypted via SolRouter &middot; Arcium RescueCipher &middot; TEE processing &middot; no plaintext logging
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
