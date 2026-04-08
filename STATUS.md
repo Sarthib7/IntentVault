@@ -207,3 +207,4 @@ npm run build        # Production
 - Reworked the UI architecture around a calmer chat-first hierarchy: slimmer navigation logic in the sidebar, a quieter conversation header, a prompt-led landing state, and less duplicated branding between panels.
 - Reduced chrome again after screenshot feedback: the sidebar is now utility-only, the main transcript column is much wider, the header is quieter, and the landing state is trimmed down to a minimal chat-first surface.
 - Switched to a dark-only visual system and used desktop references plus Playwright screenshots to tune the shell toward a closer match: structured left rail, smaller util header, centered welcome card with built-in composer, and a stronger black/green palette.
+- Recentered the welcome surface against the real chat canvas instead of viewport math so "How can I help you today?" sits lower and visually centered in the empty state.
