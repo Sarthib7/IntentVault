@@ -7,9 +7,21 @@ import { ChatView } from "@/components/chat-view";
 export default function HomePage() {
   const [theme, setTheme] = useState<"dark" | "light">("light");
 
-  // Apply theme to <html> element
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("intentvault-theme");
+    if (savedTheme === "dark" || savedTheme === "light") {
+      setTheme(savedTheme);
+      return;
+    }
+
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+    }
+  }, []);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    window.localStorage.setItem("intentvault-theme", theme);
   }, [theme]);
 
   function toggleTheme() {

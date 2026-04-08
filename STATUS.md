@@ -41,6 +41,7 @@ Working MVP with:
 - **Settings dropdown** — Model selector inside input bar with per-model pricing
 - **Decision card** — Terminal aesthetic with market data, risk factors, strategies
 - **CSS** — Full light/dark theme support, light mode default
+- **UI refresh** — Boxy cyberpunk shell with dark/light compatible panels, persistent theme selection, stronger mobile layout, and a more editorial chat/welcome surface
 
 ## Priority For Next Agent
 

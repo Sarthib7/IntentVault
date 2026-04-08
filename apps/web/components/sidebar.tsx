@@ -28,8 +28,13 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-brand">
-          <h1>INTENTVAULT</h1>
-          <span className="brand-cursor" />
+          <div className="brand-mark">
+            <span className="brand-cursor" />
+          </div>
+          <div className="sidebar-brand-copy">
+            <span className="sidebar-kicker">private workflow layer</span>
+            <h1>INTENTVAULT</h1>
+          </div>
         </div>
         <button
           className="theme-toggle"
@@ -40,7 +45,14 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
         </button>
       </div>
 
-      {/* Wallet connect preview */}
+      <div className="sidebar-intro">
+        <span className="sidebar-intro-label">signal stack</span>
+        <p>
+          Boxed research cockpit for private prompts, public market reads, and
+          clean operator sessions.
+        </p>
+      </div>
+
       <div
         className="wallet-preview"
         onMouseEnter={() => setWalletHover(true)}
@@ -56,9 +68,11 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
       </div>
 
       <button className="new-chat-btn" onClick={() => createSession()}>
-        + new_investigation
+        <span className="new-chat-btn-mark">+</span>
+        <span>new thread</span>
       </button>
 
+      <div className="session-list-label">recent sessions</div>
       <div className="session-list">
         {sessions.map((session) => (
           <div
@@ -76,13 +90,13 @@ export function Sidebar({ theme, onToggleTheme }: SidebarProps) {
       </div>
 
       <div className="sidebar-footer">
-        <span>
-          Powered by{" "}
+        <span className="sidebar-footer-line">
+          <span className="sidebar-footer-label">powered by</span>{" "}
           <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
             SolRouter
           </a>
         </span>
-        <span>Encrypted Inference &middot; Arcium TEE</span>
+        <span>Encrypted inference &middot; Arcium TEE &middot; dual theme shell</span>
       </div>
     </aside>
   );

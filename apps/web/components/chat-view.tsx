@@ -485,10 +485,12 @@ export function ChatView() {
 
   return (
     <div className="chat-area">
-      {/* Header */}
       <div className="chat-header">
         <div className="chat-header-left">
-          <h2>IntentVault</h2>
+          <div className="chat-title-block">
+            <span className="chat-kicker">cyber dispatch</span>
+            <h2>IntentVault</h2>
+          </div>
           <div className="provider-tags">
             <span className="provider-tag active" title="End-to-end encrypted inference">
               SolRouter Encrypted
@@ -496,24 +498,28 @@ export function ChatView() {
             <span className="provider-tag">{currentModel?.label ?? model}</span>
           </div>
         </div>
+        <div className="chat-header-right">
+          <span className="chat-mode-tag">
+            {phase === "idle" ? "general chat" : "analysis flow"}
+          </span>
+        </div>
       </div>
 
-      {/* Messages */}
       <div className="messages-container">
         <div className="messages-inner">
           {messages.length === 0 && !isLoading && phase === "idle" ? (
             <div className="welcome-screen">
-              <div className="welcome-brand">
-                Intent<span>Vault</span>
+              <div className="welcome-panel">
+                <span className="welcome-kicker">private signal cockpit</span>
+                <div className="welcome-brand">
+                  Intent<span>Vault</span>
+                </div>
+                <p className="welcome-desc">
+                  A minimal operator shell for encrypted chat, topic research, and
+                  token analysis. Casual prompts stay chat. Market prompts get
+                  confirmed before they become workflows.
+                </p>
               </div>
-              <p className="welcome-desc">
-                Private decision workflows powered by{" "}
-                <a href="https://www.solrouter.com" target="_blank" rel="noopener noreferrer">
-                  SolRouter
-                </a>
-                's encrypted inference. Your intent never leaves the privacy boundary.
-                Public signals flow in. Private reasoning stays encrypted.
-              </p>
 
               <div className="feature-grid">
                 {CAPABILITIES.map((cap) => (
@@ -529,13 +535,13 @@ export function ChatView() {
               </div>
 
               <div className="welcome-hint">
-                describe your intent \u2014 e.g. "Should I buy BONK?" or "What's the risk on JUP?"
+                try "what's cooking", "deep research the history of Solana", or "Should I buy BONK?"
               </div>
             </div>
           ) : (
             <>
               {messages.map((msg) => (
-                <div key={msg.id} className="message">
+                <div key={msg.id} className={`message ${msg.role}`}>
                   <div className={`msg-indicator ${msg.role}`} />
                   <div className="msg-body">
                     <div className="msg-meta">
@@ -579,7 +585,7 @@ export function ChatView() {
 
           {/* Steps */}
           {isLoading && workflowSteps.length > 0 && (
-            <div className="message">
+            <div className="message assistant loading">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
                 <div className="msg-meta">
@@ -600,7 +606,7 @@ export function ChatView() {
           )}
 
           {isLoading && workflowSteps.length === 0 && (
-            <div className="message">
+            <div className="message assistant loading">
               <div className="msg-indicator assistant" />
               <div className="msg-body">
                 <div className="workflow-steps">
@@ -687,7 +693,7 @@ export function ChatView() {
           </form>
 
           <div className="input-footer">
-            Encrypted via SolRouter &middot; Arcium RescueCipher &middot; TEE Processing &middot; No plaintext logging
+            encrypted via SolRouter &middot; Arcium RescueCipher &middot; TEE processing &middot; no plaintext logging
           </div>
         </div>
       </div>
