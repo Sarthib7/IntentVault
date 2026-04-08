@@ -204,3 +204,4 @@ npm run build        # Production
 - Tightened panel spacing, welcome-state scale, and message density to better match current chat-product reading patterns while keeping the boxy cyber shell.
 - Added a lightweight rich-text renderer for assistant messages so lists and Markdown-style tables render cleanly in the chat bubble instead of breaking the layout.
 - Relaxed the shell again after visual review: wider sidebar rail, clearer spacing around the theme toggle and wordmark, and a less cramped transcript/composer rhythm.
+- Reworked the UI architecture around a calmer chat-first hierarchy: slimmer navigation logic in the sidebar, a quieter conversation header, a prompt-led landing state, and less duplicated branding between panels.

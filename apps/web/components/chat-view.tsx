@@ -53,6 +53,13 @@ const SOLROUTER_MODELS = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini", cost: "$0.15/M" }
 ];
 
+const STARTER_PROMPTS = [
+  "what's cooking",
+  "deep research the history of Solana",
+  "Should I buy BONK?",
+  "compare btc and sol for a long-term thesis"
+];
+
 /* ------------------------------------------------------------------ */
 /* Welcome screen content                                              */
 /* ------------------------------------------------------------------ */
@@ -634,24 +641,30 @@ export function ChatView() {
   const showMCQ = mcqOptions.length > 0 && !isLoading;
   const currentModel = SOLROUTER_MODELS.find((m) => m.value === model);
 
+  function handleStarterPrompt(prompt: string) {
+    setInputValue(prompt);
+    inputRef.current?.focus();
+  }
+
   return (
     <div className="chat-area">
       <div className="chat-header">
-        <div className="chat-header-left">
+        <div className="chat-header-left chat-header-copy">
           <div className="chat-title-block">
-            <span className="chat-kicker">cyber dispatch</span>
-            <h2>IntentVault</h2>
+            <span className="chat-kicker">encrypted conversation</span>
+            <h2>{phase === "idle" ? "Ask clearly. Route only when needed." : "Guided investigation in progress."}</h2>
           </div>
-          <div className="provider-tags">
-            <span className="provider-tag active" title="End-to-end encrypted inference">
-              SolRouter Encrypted
-            </span>
-            <span className="provider-tag">{currentModel?.label ?? model}</span>
-          </div>
+          <p className="chat-subline">
+            Casual prompts stay chat. Topic research stays general. Token analysis begins only after you confirm the asset.
+          </p>
         </div>
         <div className="chat-header-right">
+          <span className="provider-tag active" title="End-to-end encrypted inference">
+            SolRouter Encrypted
+          </span>
+          <span className="provider-tag">{currentModel?.label ?? model}</span>
           <span className="chat-mode-tag">
-            {phase === "idle" ? "general chat" : "analysis flow"}
+            {phase === "idle" ? "chat mode" : "analysis flow"}
           </span>
         </div>
       </div>
@@ -661,32 +674,40 @@ export function ChatView() {
           {messages.length === 0 && !isLoading && phase === "idle" ? (
             <div className="welcome-screen">
               <div className="welcome-panel">
-                <span className="welcome-kicker">private signal cockpit</span>
+                <span className="welcome-kicker">private operator shell</span>
                 <div className="welcome-brand">
-                  Intent<span>Vault</span>
+                  Ask better. <span>Keep intent private.</span>
                 </div>
                 <p className="welcome-desc">
-                  A minimal operator shell for encrypted chat, topic research, and
-                  token analysis. Casual prompts stay chat. Market prompts get
-                  confirmed before they become workflows.
+                  IntentVault is a calmer encrypted chat surface for questions,
+                  research, and token workflows. It should feel closer to a sharp
+                  messaging product than a full-screen dashboard.
                 </p>
+                <div className="welcome-actions">
+                  {STARTER_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="starter-chip"
+                      onClick={() => handleStarterPrompt(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="feature-grid">
+              <div className="landing-grid">
                 {CAPABILITIES.map((cap) => (
-                  <div key={cap.title} className="feature-card">
+                  <div key={cap.title} className="landing-card">
                     <div className="feature-card-top">
                       <span className="feature-icon">{cap.icon}</span>
                       <span className={`feature-badge ${cap.badge}`}>{cap.badge}</span>
                     </div>
-                    <span className="feature-name">{cap.title}</span>
-                    <span className="feature-desc">{cap.description}</span>
+                    <span className="landing-card-title">{cap.title}</span>
+                    <span className="landing-card-desc">{cap.description}</span>
                   </div>
                 ))}
-              </div>
-
-              <div className="welcome-hint">
-                try "what's cooking", "deep research the history of Solana", or "Should I buy BONK?"
               </div>
             </div>
           ) : (
