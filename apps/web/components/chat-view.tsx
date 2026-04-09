@@ -630,7 +630,7 @@ export function ChatView() {
           <span className="chat-thread-title">
             {session?.title && session.title.trim() ? session.title : "Name chat"}
           </span>
-          <span className="chat-thread-pill">Chat GPT 5.0</span>
+          <span className="chat-thread-pill">{currentModel?.label ?? model}</span>
         </div>
         <div className="chat-header-right">
           <button type="button" className="chat-header-icon" aria-label="Bookmark thread">
